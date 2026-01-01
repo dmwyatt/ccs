@@ -2,6 +2,23 @@
 
 A Python CLI tool to read and export Cursor agent conversations from the local SQLite database.
 
+## 🤖 For AI Agents
+
+**[AGENT_GUIDE.md](AGENT_GUIDE.md)** - Integration guide for AI agents (Claude, Cursor, etc.)
+
+This guide teaches AI agents **when and how** to use CCS effectively:
+- Workflow patterns (not just command syntax)
+- User interaction best practices
+- Time filtering strategies
+- How to present search results
+
+**Use it by:**
+- Copying into your `.cursorrules` file
+- Dropping into `AGENTS.md` or `CLAUDE.md`
+- Referencing in agent configuration
+
+The guide focuses on decision-making and integration patterns. For command syntax, agents can run `ccs --help`.
+
 ## Investigation Findings
 
 ### Storage Location
