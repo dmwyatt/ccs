@@ -1,4 +1,4 @@
-"""Command-line interface for cursor-conversation-cli."""
+"""Command-line interface for ccs (Cursor Conversation Search)."""
 
 import click
 from rich.console import Console

@@ -1,4 +1,4 @@
-# Cursor Conversation CLI - Project Overview
+# CCS (Cursor Conversation Search) - Project Overview
 
 ## What This Is
 
@@ -14,16 +14,18 @@ A Python CLI tool for reading, searching, and exporting Cursor agent conversatio
 ## Project Structure
 
 ```
-cursor-conversation-cli/
-├── cursor_conversation_cli/    # Main package
+ccs/
+├── ccs/                       # Main package
 │   ├── __init__.py            # Package metadata
 │   ├── cli.py                 # CLI commands (click-based)
-│   └── database.py            # Database interface
+│   ├── database.py            # Database interface
+│   └── datetime_utils.py      # Time filtering utilities
 ├── cursor_conversation_reader.py  # Standalone demo script
 ├── pyproject.toml             # Project configuration
 ├── uv.lock                    # Dependency lock file
 ├── README.md                  # User documentation
-├── INVESTIGATION.md           # Investigation findings
+├── AGENT_GUIDE.md             # Guide for AI agents
+├── .cursorrules               # Cursor integration rules
 └── PROJECT_OVERVIEW.md        # This file
 ```
 
@@ -33,19 +35,19 @@ cursor-conversation-cli/
 
 ```bash
 # Show database info
-uv run cursor-conv info
+uv run ccs info
 
 # List conversations
-uv run cursor-conv list
+uv run ccs list
 
 # Show a conversation
-uv run cursor-conv show <id>
+uv run ccs show <title or id>
 
 # Export to markdown
-uv run cursor-conv export <id> --format markdown
+uv run ccs export <title or id> --format markdown
 
 # Search
-uv run cursor-conv search "query"
+uv run ccs search "query"
 ```
 
 ### Run the Demo Script
@@ -56,33 +58,33 @@ python3 cursor_conversation_reader.py
 
 ## Key Files
 
-### `cursor_conversation_cli/database.py`
+### `ccs/database.py`
 
 Core database interface with these classes/functions:
 
 - `get_cursor_db_path()` - Get path to Cursor's database
 - `CursorDatabase` - Main database interface
-  - `list_conversations()` - Get all conversations
+  - `list_conversations()` - Get all conversations with time filtering
   - `get_conversation(id)` - Get specific conversation metadata
   - `get_messages(id)` - Get messages for a conversation
   - `search_conversations(query)` - Search conversations
 
-### `cursor_conversation_cli/cli.py`
+### `ccs/cli.py`
 
 CLI commands using Click and Rich:
 
-- `cursor-conv list` - List all conversations
-- `cursor-conv show <id>` - Display conversation
-- `cursor-conv export <id>` - Export conversation
-- `cursor-conv search <query>` - Search conversations
-- `cursor-conv info` - Show database info
+- `ccs list` - List all conversations
+- `ccs show <title or id>` - Display conversation
+- `ccs export <title or id>` - Export conversation
+- `ccs search <query>` - Search conversations
+- `ccs info` - Show database info
 
 ### `pyproject.toml`
 
 Project configuration:
 - Dependencies: `click`, `rich`
 - Dev dependencies: `pytest`, `black`, `ruff`
-- Entry point: `cursor-conv` command
+- Entry point: `ccs` command
 
 ## Investigation Findings
 
@@ -113,7 +115,9 @@ To make this installable via `uv tool install`:
    ```
 7. **Install as tool:**
    ```bash
-   uv tool install cursor-conversation-cli
+   uv tool install ccs
+   # Or from GitHub:
+   uv tool install git+https://github.com/dmwyatt/ccs.git
    ```
 
 ## Development Commands
@@ -149,16 +153,17 @@ Database paths:
 ## Features
 
 - ✅ List all conversations with metadata
-- ✅ Show individual conversations
+- ✅ Show individual conversations by title or ID
 - ✅ Export to Markdown, JSON, or Text
 - ✅ Search conversations
 - ✅ Display statistics
 - ✅ Rich terminal output with tables
 - ✅ Partial ID matching
+- ✅ Title-based access with fuzzy matching
+- ✅ Date/time filtering (relative and absolute)
 - 🔲 Rich text rendering
 - 🔲 Code block syntax highlighting
 - 🔲 HTML export
-- 🔲 Date filtering
 - 🔲 Conversation deletion/archiving
 
 ## Use Cases
