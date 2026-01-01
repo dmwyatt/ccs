@@ -4,6 +4,11 @@
 
 `ccs` is a CLI tool for searching Cursor agent conversations stored locally in SQLite. Use it to reference past conversations, find previous solutions, or help users locate specific discussions.
 
+**Installation:** If `ccs` is not available, install with:
+```bash
+uv tool install git+https://github.com/dmwyatt/ccs.git
+```
+
 **For command syntax:** Run `ccs --help` or `ccs <command> --help`
 
 ## When to Proactively Use CCS
