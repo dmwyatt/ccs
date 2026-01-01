@@ -151,7 +151,8 @@ class CursorDatabase:
         return sorted(messages, key=lambda x: x['created'] if x['created'] else '')
 
     def search_conversations(
-        self, query: str, since: Optional[str] = None, before: Optional[str] = None, include_empty: bool = False
+        self, query: str, since: Optional[str] = None, before: Optional[str] = None,
+        include_empty: bool = False, search_diffs: bool = False
     ) -> List[Dict[str, Any]]:
         """Search conversations by text content.
 
@@ -160,6 +161,7 @@ class CursorDatabase:
             since: Filter conversations created since this time
             before: Filter conversations created before this time
             include_empty: Include empty conversations. Default: False
+            search_diffs: Also search in code diffs (file paths and diff content). Default: False
 
         Returns:
             List of matching conversations.
@@ -181,12 +183,86 @@ class CursorDatabase:
 
             # Search in full messages
             messages = self.get_messages(conv['id'])
+            found_in_messages = False
             for msg in messages:
                 if query_lower in msg['text'].lower():
                     results.append(conv)
+                    found_in_messages = True
                     break
 
+            if found_in_messages:
+                continue
+
+            # Search in code diffs if enabled
+            if search_diffs:
+                if self._search_code_diffs(conv['id'], query_lower):
+                    results.append(conv)
+
         return results
+
+    def _search_code_diffs(self, composer_id: str, query_lower: str) -> bool:
+        """Search code diffs for a conversation.
+
+        Args:
+            composer_id: The conversation ID.
+            query_lower: Lowercase search query.
+
+        Returns:
+            True if query found in code diffs, False otherwise.
+        """
+        try:
+            conversation = self.get_conversation(composer_id)
+            code_block_data = conversation.get('codeBlockData', {})
+
+            # Search in file paths and code block content
+            for file_uri, blocks in code_block_data.items():
+                # Search in file path
+                if query_lower in file_uri.lower():
+                    return True
+
+                # Search in each code block's diff content
+                for block_id, block_data in blocks.items():
+                    diff_id = block_data.get('diffId')
+                    if diff_id:
+                        diff_data = self.get_code_block_diff(composer_id, diff_id)
+                        if diff_data and self._search_in_diff(diff_data, query_lower):
+                            return True
+
+        except (ValueError, KeyError):
+            pass
+
+        return False
+
+    def _search_in_diff(self, diff_data: Dict[str, Any], query_lower: str) -> bool:
+        """Search within diff data for a query.
+
+        Args:
+            diff_data: The diff data dictionary.
+            query_lower: Lowercase search query.
+
+        Returns:
+            True if query found in diff, False otherwise.
+        """
+        # Search in newModelDiffWrtV0 (the main diff content)
+        new_diffs = diff_data.get('newModelDiffWrtV0', [])
+        for change in new_diffs:
+            # modified is a list of lines
+            modified_lines = change.get('modified', [])
+            for line in modified_lines:
+                if query_lower in line.lower():
+                    return True
+
+        # Also search in the original text if available
+        original_text = diff_data.get('originalText', '')
+        if original_text and query_lower in original_text.lower():
+            return True
+
+        # Search in modified text if available
+        modified_text = diff_data.get('modifiedText', '')
+        if modified_text and query_lower in modified_text.lower():
+            return True
+
+        return False
 
     def find_by_title(self, title_query: str, include_empty: bool = False) -> List[Dict[str, Any]]:
         """Find conversations by title or subtitle.

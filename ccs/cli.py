@@ -159,11 +159,12 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
 @click.option('--since', help='Search conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Search conversations before this time (same format as --since)')
 @click.option('--format', 'output_format', type=click.Choice(['rich', 'markdown']), default='rich')
-def search(query: str, include_empty: bool, since: str, before: str, output_format: str):
+@click.option('--search-diffs', is_flag=True, help='Also search in code diffs (file paths and diff content)')
+def search(query: str, include_empty: bool, since: str, before: str, output_format: str, search_diffs: bool):
     """Search conversations by text content."""
     try:
         db = CursorDatabase()
-        results = db.search_conversations(query, since=since, before=before, include_empty=include_empty)
+        results = db.search_conversations(query, since=since, before=before, include_empty=include_empty, search_diffs=search_diffs)
 
         if not results:
             console.print(f"[yellow]No conversations found matching '{query}'[/yellow]")
