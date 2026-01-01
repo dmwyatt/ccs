@@ -1,7 +1,9 @@
 """Database interface for reading Cursor conversations."""
 
-import sqlite3
 import json
+import os
+import sqlite3
+import sys
 from pathlib import Path
 from datetime import datetime
 from typing import List, Dict, Any, Optional
@@ -10,8 +12,23 @@ from .datetime_utils import filter_by_time_range
 
 
 def get_cursor_db_path() -> Path:
-    """Get the path to Cursor's global state database."""
-    return Path.home() / ".config" / "Cursor" / "User" / "globalStorage" / "state.vscdb"
+    """Get the path to Cursor's global state database.
+
+    Returns the platform-specific path:
+        - Linux: ~/.config/Cursor/User/globalStorage/state.vscdb
+        - macOS: ~/Library/Application Support/Cursor/User/globalStorage/state.vscdb
+        - Windows: %APPDATA%/Cursor/User/globalStorage/state.vscdb
+    """
+    if sys.platform == "darwin":  # macOS
+        return Path.home() / "Library" / "Application Support" / "Cursor" / "User" / "globalStorage" / "state.vscdb"
+    elif sys.platform == "win32":  # Windows
+        appdata = os.environ.get("APPDATA")
+        if appdata:
+            return Path(appdata) / "Cursor" / "User" / "globalStorage" / "state.vscdb"
+        # Fallback if APPDATA not set
+        return Path.home() / "AppData" / "Roaming" / "Cursor" / "User" / "globalStorage" / "state.vscdb"
+    else:  # Linux and other Unix-like
+        return Path.home() / ".config" / "Cursor" / "User" / "globalStorage" / "state.vscdb"
 
 
 class CursorDatabase:
