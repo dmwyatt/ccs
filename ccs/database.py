@@ -166,103 +166,86 @@ class CursorDatabase:
         Returns:
             List of matching conversations.
         """
+        conn = self._connect()
+        cursor = conn.cursor()
+
+        # Escape % and _ for LIKE pattern, then wrap with %
+        query_escaped = query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        like_pattern = f'%{query_escaped}%'
+
+        # Find matching composer IDs using SQL with JSON operators
+        # Search in metadata: title (name), subtitle, and preview (text)
+        cursor.execute('''
+            SELECT DISTINCT SUBSTR(key, 14) as composer_id
+            FROM cursorDiskKV
+            WHERE key LIKE 'composerData:%'
+              AND (
+                LOWER(value ->> '$.name') LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(value ->> '$.subtitle') LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(value ->> '$.text') LIKE LOWER(?) ESCAPE '\\'
+              )
+        ''', (like_pattern, like_pattern, like_pattern))
+        matching_ids = {row[0] for row in cursor.fetchall()}
+
+        # Search in message text
+        cursor.execute('''
+            SELECT DISTINCT SUBSTR(key, 10, INSTR(SUBSTR(key, 10), ':') - 1) as composer_id
+            FROM cursorDiskKV
+            WHERE key LIKE 'bubbleId:%'
+              AND LOWER(value ->> '$.text') LIKE LOWER(?) ESCAPE '\\'
+        ''', (like_pattern,))
+        matching_ids.update(row[0] for row in cursor.fetchall())
+
+        # Search in code diffs if enabled
+        if search_diffs:
+            matching_ids.update(self._search_code_diffs_sql(cursor, like_pattern))
+
+        conn.close()
+
+        # Get full conversation data for matching IDs and apply filters
         all_conversations = self.list_conversations(since=since, before=before, include_empty=include_empty)
-        query_lower = query.lower()
-
-        results = []
-        for conv in all_conversations:
-            # Search in title and subtitle first
-            if query_lower in conv['title'].lower() or query_lower in conv['subtitle'].lower():
-                results.append(conv)
-                continue
-
-            # Search in preview text
-            if query_lower in conv['preview'].lower():
-                results.append(conv)
-                continue
-
-            # Search in full messages
-            messages = self.get_messages(conv['id'])
-            found_in_messages = False
-            for msg in messages:
-                if query_lower in msg['text'].lower():
-                    results.append(conv)
-                    found_in_messages = True
-                    break
-
-            if found_in_messages:
-                continue
-
-            # Search in code diffs if enabled
-            if search_diffs:
-                if self._search_code_diffs(conv['id'], query_lower):
-                    results.append(conv)
+        results = [conv for conv in all_conversations if conv['id'] in matching_ids]
 
         return results
 
-    def _search_code_diffs(self, composer_id: str, query_lower: str) -> bool:
-        """Search code diffs for a conversation.
+    def _search_code_diffs_sql(self, cursor: sqlite3.Cursor, like_pattern: str) -> set:
+        """Search code diffs using SQL.
 
         Args:
-            composer_id: The conversation ID.
-            query_lower: Lowercase search query.
+            cursor: Database cursor.
+            like_pattern: LIKE pattern with wildcards (e.g., '%query%').
 
         Returns:
-            True if query found in code diffs, False otherwise.
+            Set of composer IDs that have matching diffs.
         """
-        try:
-            conversation = self.get_conversation(composer_id)
-            code_block_data = conversation.get('codeBlockData', {})
+        matching_ids = set()
 
-            # Search in file paths and code block content
-            for file_uri, blocks in code_block_data.items():
-                # Search in file path
-                if query_lower in file_uri.lower():
-                    return True
+        # Search in codeBlockData file paths (keys of the codeBlockData object)
+        # Using json_each to iterate over the keys
+        cursor.execute('''
+            SELECT DISTINCT SUBSTR(kv.key, 14) as composer_id
+            FROM cursorDiskKV kv, json_each(kv.value ->> '$.codeBlockData') as cbd
+            WHERE kv.key LIKE 'composerData:%'
+              AND kv.value ->> '$.codeBlockData' IS NOT NULL
+              AND LOWER(cbd.key) LIKE LOWER(?) ESCAPE '\\'
+        ''', (like_pattern,))
+        matching_ids.update(row[0] for row in cursor.fetchall())
 
-                # Search in each code block's diff content
-                for block_id, block_data in blocks.items():
-                    diff_id = block_data.get('diffId')
-                    if diff_id:
-                        diff_data = self.get_code_block_diff(composer_id, diff_id)
-                        if diff_data and self._search_in_diff(diff_data, query_lower):
-                            return True
+        # Search in codeBlockDiff entries (originalText, modifiedText, and diff content)
+        # Extract composer_id from key pattern: codeBlockDiff:{composer_id}:{diff_id}
+        cursor.execute('''
+            SELECT DISTINCT SUBSTR(key, 15, INSTR(SUBSTR(key, 15), ':') - 1) as composer_id
+            FROM cursorDiskKV
+            WHERE key LIKE 'codeBlockDiff:%'
+              AND (
+                LOWER(value ->> '$.originalText') LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(value ->> '$.modifiedText') LIKE LOWER(?) ESCAPE '\\'
+                OR LOWER(value) LIKE LOWER(?) ESCAPE '\\'
+              )
+        ''', (like_pattern, like_pattern, like_pattern))
+        matching_ids.update(row[0] for row in cursor.fetchall())
 
-        except (ValueError, KeyError):
-            pass
-
-        return False
-
-    def _search_in_diff(self, diff_data: Dict[str, Any], query_lower: str) -> bool:
-        """Search within diff data for a query.
-
-        Args:
-            diff_data: The diff data dictionary.
-            query_lower: Lowercase search query.
-
-        Returns:
-            True if query found in diff, False otherwise.
-        """
-        # Search in newModelDiffWrtV0 (the main diff content)
-        new_diffs = diff_data.get('newModelDiffWrtV0', [])
-        for change in new_diffs:
-            # modified is a list of lines
-            modified_lines = change.get('modified', [])
-            for line in modified_lines:
-                if query_lower in line.lower():
-                    return True
-
-        # Also search in the original text if available
-        original_text = diff_data.get('originalText', '')
-        if original_text and query_lower in original_text.lower():
-            return True
-
-        # Search in modified text if available
-        modified_text = diff_data.get('modifiedText', '')
-        if modified_text and query_lower in modified_text.lower():
-            return True
-
-        return False
+        return matching_ids
 
     def find_by_title(self, title_query: str, include_empty: bool = False) -> List[Dict[str, Any]]:
         """Find conversations by title or subtitle.
