@@ -5,6 +5,7 @@ from rich.console import Console
 from rich.table import Table
 from rich.markdown import Markdown
 from rich.panel import Panel
+from rich.padding import Padding
 from datetime import datetime
 from pathlib import Path
 import json
@@ -200,11 +201,30 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
         # Extract code block data from conversation
         code_block_data = conversation.get('codeBlockData', {})
 
+        # Get model name for assistant label
+        model_name = conversation.get('modelConfig', {}).get('modelName', 'Cursor')
+        # Clean up model name if needed (e.g., "gpt-4" -> "GPT-4", "claude-3-5-sonnet" -> "Claude 3.5 Sonnet")
+        if 'claude' in model_name.lower():
+            model_name = model_name.replace('claude-', 'Claude ').replace('-', ' ').title()
+        elif 'gpt' in model_name.lower():
+            model_name = model_name.upper().replace('-', '-')
+        else:
+            model_name = model_name.title()
+
         msg_num = 0
         for i, msg in enumerate(messages, 1):
             created = msg.get('created', '')
-            msg_type = msg['type'].upper()
-            color = "green" if msg['type'] == 'user' else "blue"
+            # Format timestamp - just show time if available
+            timestamp = ''
+            if created:
+                try:
+                    # Try to parse and format the timestamp
+                    if 'T' in created:
+                        timestamp = created.split('T')[1].split('.')[0][:5]  # Get HH:MM
+                    else:
+                        timestamp = created[:5] if len(created) >= 5 else created
+                except:
+                    timestamp = created[:10]  # Fallback
 
             # Check for code blocks associated with this message
             code_blocks = get_code_blocks_for_message(msg['id'], code_block_data)
@@ -215,32 +235,42 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
                 continue
 
             msg_num += 1
-            console.print(f"\n[{color}]{'='*70}[/{color}]")
-            console.print(f"[{color} bold]{msg_num}. {msg_type} - {created}[/{color} bold]")
-            console.print(f"[{color}]{'='*70}[/{color}]")
+
+            # Determine speaker label and styling
+            if msg['type'] == 'user':
+                speaker = "You"
+                color = "green"
+                indent = ""
+            else:
+                speaker = model_name
+                color = "blue"
+                indent = "  "  # Slight indent for assistant messages
+
+            # Build message content
+            message_content = []
 
             if msg['text']:
-                console.print(msg['text'])
+                message_content.append(msg['text'])
 
             # Show code blocks (can appear with or without text)
             if code_blocks:
                 if msg['text']:
-                    console.print()  # Add spacing if we also had text
+                    message_content.append("")  # Add spacing
 
                 for cb in code_blocks:
-                    summary = f"[cyan][Code edit: {cb['file']} ({cb['language']}) - {cb['status']}][/cyan]"
-                    console.print(summary)
+                    summary = f"[cyan]📝 Code edit: {cb['file']} ({cb['language']}) - {cb['status']}[/cyan]"
+                    message_content.append(summary)
 
                     if show_code_details:
-                        console.print(f"  [dim]Full path: {cb['full_path']}[/dim]")
-                        console.print(f"  [dim]Diff ID: {cb['diff_id']}[/dim]")
+                        message_content.append(f"  [dim]Full path: {cb['full_path']}[/dim]")
+                        message_content.append(f"  [dim]Diff ID: {cb['diff_id']}[/dim]")
                         if cb['created_at']:
-                            console.print(f"  [dim]Created: {cb['created_at']}[/dim]")
+                            message_content.append(f"  [dim]Created: {cb['created_at']}[/dim]")
 
                     if show_code_diff and cb['diff_id']:
                         diff_data = db.get_code_block_diff(conversation_id, cb['diff_id'])
                         if diff_data:
-                            console.print(f"\n[yellow]Diff for {cb['file']}:[/yellow]")
+                            message_content.append(f"\n[yellow]Diff for {cb['file']}:[/yellow]")
                             # Display the diff content from newModelDiffWrtV0
                             new_diffs = diff_data.get('newModelDiffWrtV0', [])
                             if new_diffs:
@@ -251,25 +281,45 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
 
                                     # Show the line range
                                     if end_line > start_line:
-                                        console.print(f"[dim]Lines {start_line}-{end_line-1}:[/dim]")
+                                        message_content.append(f"[dim]Lines {start_line}-{end_line-1}:[/dim]")
                                     else:
-                                        console.print(f"[dim]Line {start_line}:[/dim]")
+                                        message_content.append(f"[dim]Line {start_line}:[/dim]")
 
                                     # Show the added/modified lines
                                     for line in modified_lines:
-                                        console.print(f"[green]+ {line}[/green]")
-                                    console.print()
+                                        message_content.append(f"[green]+ {line}[/green]")
                             else:
-                                console.print("[dim]No diff changes available[/dim]")
-                            console.print()
+                                message_content.append("[dim]No diff changes available[/dim]")
 
-            # Show code blocks if present in message metadata (different from codeBlockData)
+            # Show metadata if present
             if msg.get('suggested_code_blocks'):
-                console.print(f"\n[yellow]Suggested code blocks: {len(msg['suggested_code_blocks'])}[/yellow]")
+                message_content.append(f"\n[yellow]Suggested code blocks: {len(msg['suggested_code_blocks'])}[/yellow]")
 
-            # Show tool results if present
             if msg.get('tool_results'):
-                console.print(f"[yellow]Tool results: {len(msg['tool_results'])}[/yellow]")
+                message_content.append(f"[yellow]Tool results: {len(msg['tool_results'])}[/yellow]")
+
+            # Create the chat bubble
+            content_text = "\n".join(message_content) if message_content else "[dim](empty message)[/dim]"
+            title_text = f"{speaker}"
+            if timestamp:
+                title_text += f" • {timestamp}"
+
+            # Create the panel
+            panel = Panel(
+                content_text,
+                title=title_text,
+                title_align="left",
+                border_style=color,
+                padding=(0, 1),
+            )
+
+            # For assistant messages, add left padding to create indent effect
+            if msg['type'] == 'user':
+                console.print(panel)
+            else:
+                # Assistant message - wrap in padding for indent
+                padded_panel = Padding(panel, (0, 0, 0, 2))  # (top, right, bottom, left)
+                console.print(padded_panel)
 
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
