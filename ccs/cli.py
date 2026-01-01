@@ -2,16 +2,10 @@
 
 import click
 from rich.console import Console
-from rich.table import Table
-from rich.markdown import Markdown
 from rich.panel import Panel
-from rich.padding import Padding
-from rich.console import Group
-from datetime import datetime
-from pathlib import Path
-import json
 
 from .database import CursorDatabase, get_cursor_db_path
+from .formatters import RichFormatter, MarkdownFormatter
 
 
 console = Console()
@@ -30,7 +24,8 @@ def main():
 @click.option('--limit', '-n', type=int, default=20, help='Limit number of results')
 @click.option('--since', help='Show conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Show conversations before this time (same format as --since)')
-def list(show_all: bool, include_empty: bool, limit: int, since: str, before: str):
+@click.option('--format', 'output_format', type=click.Choice(['rich', 'markdown']), default='rich')
+def list(show_all: bool, include_empty: bool, limit: int, since: str, before: str, output_format: str):
     """List all conversations."""
     try:
         db = CursorDatabase()
@@ -46,27 +41,15 @@ def list(show_all: bool, include_empty: bool, limit: int, since: str, before: st
             console.print("[yellow]No conversations found.[/yellow]")
             return
 
-        table = Table(title=f"Cursor Conversations ({len(conversations)} found)")
-        table.add_column("Title", style="cyan bold", no_wrap=False)
-        table.add_column("Subtitle", style="dim", no_wrap=False)
-        table.add_column("Created", style="green")
-        table.add_column("Msgs", justify="right", style="blue")
-        table.add_column("ID", style="dim", no_wrap=True)
-
-        for conv in conversations:
-            created = conv['created'].strftime("%Y-%m-%d %H:%M") if conv['created'] else "Unknown"
-            title = conv['title'][:50] + "..." if len(conv['title']) > 50 else conv['title']
-            subtitle = conv['subtitle'][:30] + "..." if len(conv['subtitle']) > 30 else conv['subtitle']
-
-            table.add_row(
-                title,
-                subtitle,
-                created,
-                str(conv['message_count']),
-                conv['id'][:12] + "...",
-            )
-
-        console.print(table)
+        # Use formatter based on output format
+        if output_format == 'rich':
+            formatter = RichFormatter()
+            table = formatter.format_conversation_list(conversations)
+            console.print(table)
+        else:  # markdown
+            formatter = MarkdownFormatter()
+            output = formatter.format_conversation_list(conversations)
+            print(output)
 
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -118,42 +101,9 @@ def find_conversation(db: CursorDatabase, query: str, since: str = None, before:
     return None, None
 
 
-def get_code_blocks_for_message(bubble_id: str, code_block_data: dict) -> list:
-    """Extract code blocks associated with a specific message bubble.
-
-    Args:
-        bubble_id: The message bubble ID
-        code_block_data: The codeBlockData from the conversation
-
-    Returns:
-        List of code block info dictionaries
-    """
-    code_blocks = []
-
-    # codeBlockData structure: {file_uri: {codeblock_id: {...data, bubbleId: ...}}}
-    for file_uri, blocks in code_block_data.items():
-        for block_id, block_data in blocks.items():
-            if block_data.get('bubbleId') == bubble_id:
-                # Extract file path from URI
-                file_path = file_uri.replace('file://', '')
-                # Get just the filename
-                filename = Path(file_path).name
-
-                code_blocks.append({
-                    'file': filename,
-                    'full_path': file_path,
-                    'language': block_data.get('languageId', 'unknown'),
-                    'status': block_data.get('status', 'unknown'),
-                    'diff_id': block_data.get('diffId', ''),
-                    'created_at': block_data.get('createdAt', ''),
-                })
-
-    return code_blocks
-
-
 @main.command()
 @click.argument('query')
-@click.option('--format', 'output_format', type=click.Choice(['text', 'json']), default='text')
+@click.option('--format', 'output_format', type=click.Choice(['rich', 'markdown']), default='rich')
 @click.option('--include-empty', is_flag=True, help='Include empty conversations (0 messages)')
 @click.option('--since', help='Filter to conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Filter to conversations before this time (same format as --since)')
@@ -174,247 +124,26 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
         conversation = db.get_conversation(conversation_id)
         messages = db.get_messages(conversation_id)
 
-        if output_format == 'json':
-            output = {
-                'conversation': conversation,
-                'messages': messages,
-            }
-            console.print_json(data=output)
-            return
-
-        # Text format with rich formatting
-        title_display = f"[bold cyan]{matching_conv['title']}[/bold cyan]"
-        if matching_conv['subtitle']:
-            title_display += f"\n[dim]{matching_conv['subtitle']}[/dim]"
-
-        console.print(Panel.fit(
-            f"{title_display}\n\n"
-            f"[bold]ID:[/bold] {conversation_id}\n"
-            f"[bold]Created:[/bold] {matching_conv['created']}\n"
-            f"[bold]Status:[/bold] {conversation.get('status', 'unknown')}\n"
-            f"[bold]Messages:[/bold] {len(messages)}\n"
-            f"[bold]Model:[/bold] {conversation.get('modelConfig', {}).get('modelName', 'unknown')}",
-            title="[bold cyan]Conversation[/bold cyan]"
-        ))
-
-        console.print()
-
-        # Extract code block data from conversation
-        code_block_data = conversation.get('codeBlockData', {})
-
-        # Get model name for assistant label
-        model_name = conversation.get('modelConfig', {}).get('modelName', 'Cursor')
-        # Clean up model name if needed (e.g., "gpt-4" -> "GPT-4", "claude-3-5-sonnet" -> "Claude 3.5 Sonnet")
-        if 'claude' in model_name.lower():
-            model_name = model_name.replace('claude-', 'Claude ').replace('-', ' ').title()
-        elif 'gpt' in model_name.lower():
-            model_name = model_name.upper().replace('-', '-')
-        else:
-            model_name = model_name.title()
-
-        msg_num = 0
-        for i, msg in enumerate(messages, 1):
-            created = msg.get('created', '')
-            # Format timestamp - just show time if available
-            timestamp = ''
-            if created:
-                try:
-                    # Try to parse and format the timestamp
-                    if 'T' in created:
-                        timestamp = created.split('T')[1].split('.')[0][:5]  # Get HH:MM
-                    else:
-                        timestamp = created[:5] if len(created) >= 5 else created
-                except:
-                    timestamp = created[:10]  # Fallback
-
-            # Check for code blocks associated with this message
-            code_blocks = get_code_blocks_for_message(msg['id'], code_block_data)
-
-            # Skip empty messages unless --show-empty is set
-            is_empty = not msg['text'] and not code_blocks
-            if is_empty and not show_empty:
-                continue
-
-            msg_num += 1
-
-            # Determine speaker label and styling
-            if msg['type'] == 'user':
-                speaker = "You"
-                color = "green"
-                indent = ""
-            else:
-                speaker = model_name
-                color = "blue"
-                indent = "  "  # Slight indent for assistant messages
-
-            # Build message content as a list of renderables
-            renderables = []
-
-            # Add markdown-rendered text if present
-            if msg['text']:
-                renderables.append(Markdown(msg['text']))
-
-            # Show code blocks (can appear with or without text)
-            if code_blocks:
-                if msg['text']:
-                    renderables.append("")  # Add spacing
-
-                code_block_info = []
-                for cb in code_blocks:
-                    summary = f"[cyan]📝 Code edit: {cb['file']} ({cb['language']}) - {cb['status']}[/cyan]"
-                    code_block_info.append(summary)
-
-                    if show_code_details:
-                        code_block_info.append(f"  [dim]Full path: {cb['full_path']}[/dim]")
-                        code_block_info.append(f"  [dim]Diff ID: {cb['diff_id']}[/dim]")
-                        if cb['created_at']:
-                            code_block_info.append(f"  [dim]Created: {cb['created_at']}[/dim]")
-
-                    if show_code_diff and cb['diff_id']:
-                        diff_data = db.get_code_block_diff(conversation_id, cb['diff_id'])
-                        if diff_data:
-                            code_block_info.append(f"\n[yellow]Diff for {cb['file']}:[/yellow]")
-                            # Display the diff content from newModelDiffWrtV0
-                            new_diffs = diff_data.get('newModelDiffWrtV0', [])
-                            if new_diffs:
-                                for change in new_diffs:
-                                    start_line = change['original']['startLineNumber']
-                                    end_line = change['original']['endLineNumberExclusive']
-                                    modified_lines = change['modified']
-
-                                    # Show the line range
-                                    if end_line > start_line:
-                                        code_block_info.append(f"[dim]Lines {start_line}-{end_line-1}:[/dim]")
-                                    else:
-                                        code_block_info.append(f"[dim]Line {start_line}:[/dim]")
-
-                                    # Show the added/modified lines
-                                    for line in modified_lines:
-                                        code_block_info.append(f"[green]+ {line}[/green]")
-                            else:
-                                code_block_info.append("[dim]No diff changes available[/dim]")
-
-                renderables.append("\n".join(code_block_info))
-
-            # Show metadata if present
-            if msg.get('suggested_code_blocks'):
-                renderables.append(f"\n[yellow]Suggested code blocks: {len(msg['suggested_code_blocks'])}[/yellow]")
-
-            if msg.get('tool_results'):
-                renderables.append(f"[yellow]Tool results: {len(msg['tool_results'])}[/yellow]")
-
-            # Create the chat bubble content
-            if renderables:
-                content = Group(*renderables)
-            else:
-                content = "[dim](empty message)[/dim]"
-            title_text = f"{speaker}"
-            if timestamp:
-                title_text += f" • {timestamp}"
-
-            # Create the panel
-            panel = Panel(
-                content,
-                title=title_text,
-                title_align="left",
-                border_style=color,
-                padding=(0, 1),
+        # Use formatter based on output format
+        if output_format == 'rich':
+            formatter = RichFormatter()
+            output = formatter.format_conversation(
+                conversation=conversation,
+                messages=messages,
+                show_code_diff=show_code_diff,
+                show_code_details=show_code_details,
+                show_empty=show_empty,
+                db=db
             )
-
-            # For assistant messages, add left padding to create indent effect
-            if msg['type'] == 'user':
-                console.print(panel)
-            else:
-                # Assistant message - wrap in padding for indent
-                padded_panel = Padding(panel, (0, 0, 0, 2))  # (top, right, bottom, left)
-                console.print(padded_panel)
-
-    except FileNotFoundError as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise click.Abort()
-    except ValueError as e:
-        console.print(f"[red]Error: {e}[/red]")
-        raise click.Abort()
-
-
-@main.command()
-@click.argument('query')
-@click.option('--output', '-o', type=click.Path(), help='Output file path')
-@click.option('--format', 'output_format', type=click.Choice(['markdown', 'json', 'text']), default='markdown')
-@click.option('--include-empty', is_flag=True, help='Include empty conversations (0 messages)')
-@click.option('--since', help='Filter to conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
-@click.option('--before', help='Filter to conversations before this time (same format as --since)')
-def export(query: str, output: str, output_format: str, include_empty: bool, since: str, before: str):
-    """Export a conversation to a file by ID or title, optionally filtered by time."""
-    try:
-        db = CursorDatabase()
-
-        matching_conv, conversation_id = find_conversation(db, query, since=since, before=before, include_empty=include_empty)
-
-        if not matching_conv:
-            console.print(f"[red]Conversation matching '{query}' not found[/red]")
-            raise click.Abort()
-
-        conversation = db.get_conversation(conversation_id)
-        messages = db.get_messages(conversation_id)
-
-        # Generate output filename if not provided
-        if not output:
-            timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            output = f"cursor_conversation_{timestamp}.{output_format}"
-
-        output_path = Path(output)
-
-        if output_format == 'json':
-            data = {
-                'conversation': conversation,
-                'messages': messages,
-            }
-            output_path.write_text(json.dumps(data, indent=2))
-
-        elif output_format == 'markdown':
-            md_content = f"# {matching_conv['title']}\n\n"
-            if matching_conv['subtitle']:
-                md_content += f"_{matching_conv['subtitle']}_\n\n"
-            md_content += f"**ID:** {conversation_id}\n\n"
-            md_content += f"**Created:** {matching_conv['created']}\n\n"
-            md_content += f"**Status:** {conversation.get('status', 'unknown')}\n\n"
-            md_content += f"**Messages:** {len(messages)}\n\n"
-            md_content += "---\n\n"
-
-            for i, msg in enumerate(messages, 1):
-                msg_type = msg['type'].upper()
-                created = msg.get('created', '')
-                md_content += f"## {i}. {msg_type} - {created}\n\n"
-                md_content += f"{msg['text']}\n\n"
-
-                if msg.get('suggested_code_blocks'):
-                    md_content += f"*Code blocks: {len(msg['suggested_code_blocks'])}*\n\n"
-
-            output_path.write_text(md_content)
-
-        else:  # text format
-            text_content = f"{matching_conv['title']}\n{'='*70}\n"
-            if matching_conv['subtitle']:
-                text_content += f"{matching_conv['subtitle']}\n\n"
-            else:
-                text_content += "\n"
-            text_content += f"ID: {conversation_id}\n"
-            text_content += f"Created: {matching_conv['created']}\n"
-            text_content += f"Status: {conversation.get('status', 'unknown')}\n"
-            text_content += f"Messages: {len(messages)}\n\n"
-            text_content += "="*70 + "\n\n"
-
-            for i, msg in enumerate(messages, 1):
-                msg_type = msg['type'].upper()
-                created = msg.get('created', '')
-                text_content += f"{i}. {msg_type} - {created}\n"
-                text_content += "-"*70 + "\n"
-                text_content += f"{msg['text']}\n\n"
-
-            output_path.write_text(text_content)
-
-        console.print(f"[green]Exported to {output_path}[/green]")
+            console.print(output)
+        else:  # markdown
+            formatter = MarkdownFormatter()
+            output = formatter.format_conversation(
+                conversation=conversation,
+                messages=messages,
+                show_empty=show_empty
+            )
+            print(output)  # Plain print for piping
 
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -429,7 +158,8 @@ def export(query: str, output: str, output_format: str, include_empty: bool, sin
 @click.option('--include-empty', is_flag=True, help='Include empty conversations (0 messages)')
 @click.option('--since', help='Search conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Search conversations before this time (same format as --since)')
-def search(query: str, include_empty: bool, since: str, before: str):
+@click.option('--format', 'output_format', type=click.Choice(['rich', 'markdown']), default='rich')
+def search(query: str, include_empty: bool, since: str, before: str, output_format: str):
     """Search conversations by text content."""
     try:
         db = CursorDatabase()
@@ -439,27 +169,19 @@ def search(query: str, include_empty: bool, since: str, before: str):
             console.print(f"[yellow]No conversations found matching '{query}'[/yellow]")
             return
 
-        table = Table(title=f"Search Results for '{query}' ({len(results)} found)")
-        table.add_column("Title", style="cyan bold", no_wrap=False)
-        table.add_column("Subtitle", style="dim", no_wrap=False)
-        table.add_column("Created", style="green")
-        table.add_column("Msgs", justify="right", style="blue")
-        table.add_column("ID", style="dim", no_wrap=True)
-
-        for conv in results:
-            created = conv['created'].strftime("%Y-%m-%d %H:%M") if conv['created'] else "Unknown"
-            title = conv['title'][:50] + "..." if len(conv['title']) > 50 else conv['title']
-            subtitle = conv['subtitle'][:30] + "..." if len(conv['subtitle']) > 30 else conv['subtitle']
-
-            table.add_row(
-                title,
-                subtitle,
-                created,
-                str(conv['message_count']),
-                conv['id'][:12] + "...",
-            )
-
-        console.print(table)
+        # Use formatter based on output format
+        if output_format == 'rich':
+            formatter = RichFormatter()
+            table = formatter.format_conversation_list(results)
+            # Customize title for search context
+            table.title = f"Search Results for '{query}' ({len(results)} found)"
+            console.print(table)
+        else:  # markdown
+            formatter = MarkdownFormatter()
+            output = formatter.format_conversation_list(results)
+            # Prepend search query to output
+            output = f"# Search Results for '{query}'\n\n" + output
+            print(output)
 
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
