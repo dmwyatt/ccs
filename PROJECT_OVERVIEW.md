@@ -1,0 +1,191 @@
+# Cursor Conversation CLI - Project Overview
+
+## What This Is
+
+A Python CLI tool for reading, searching, and exporting Cursor agent conversations from the local SQLite database.
+
+## Project Status
+
+✅ **Investigation Complete** - Fully documented how Cursor stores conversations
+✅ **Working CLI** - Functional CLI with all core features implemented
+✅ **Managed by uv** - Proper Python project setup with uv
+🔲 **Not Yet Published** - Not yet installable via `uv tool install`
+
+## Project Structure
+
+```
+cursor-conversation-cli/
+├── cursor_conversation_cli/    # Main package
+│   ├── __init__.py            # Package metadata
+│   ├── cli.py                 # CLI commands (click-based)
+│   └── database.py            # Database interface
+├── cursor_conversation_reader.py  # Standalone demo script
+├── pyproject.toml             # Project configuration
+├── uv.lock                    # Dependency lock file
+├── README.md                  # User documentation
+├── INVESTIGATION.md           # Investigation findings
+└── PROJECT_OVERVIEW.md        # This file
+```
+
+## Quick Start
+
+### Run the CLI in Development Mode
+
+```bash
+# Show database info
+uv run cursor-conv info
+
+# List conversations
+uv run cursor-conv list
+
+# Show a conversation
+uv run cursor-conv show <id>
+
+# Export to markdown
+uv run cursor-conv export <id> --format markdown
+
+# Search
+uv run cursor-conv search "query"
+```
+
+### Run the Demo Script
+
+```bash
+python3 cursor_conversation_reader.py
+```
+
+## Key Files
+
+### `cursor_conversation_cli/database.py`
+
+Core database interface with these classes/functions:
+
+- `get_cursor_db_path()` - Get path to Cursor's database
+- `CursorDatabase` - Main database interface
+  - `list_conversations()` - Get all conversations
+  - `get_conversation(id)` - Get specific conversation metadata
+  - `get_messages(id)` - Get messages for a conversation
+  - `search_conversations(query)` - Search conversations
+
+### `cursor_conversation_cli/cli.py`
+
+CLI commands using Click and Rich:
+
+- `cursor-conv list` - List all conversations
+- `cursor-conv show <id>` - Display conversation
+- `cursor-conv export <id>` - Export conversation
+- `cursor-conv search <query>` - Search conversations
+- `cursor-conv info` - Show database info
+
+### `pyproject.toml`
+
+Project configuration:
+- Dependencies: `click`, `rich`
+- Dev dependencies: `pytest`, `black`, `ruff`
+- Entry point: `cursor-conv` command
+
+## Investigation Findings
+
+Cursor stores conversations in:
+- **Location:** `~/.config/Cursor/User/globalStorage/state.vscdb`
+- **Format:** SQLite database with key-value pattern
+- **Structure:**
+  - `composerData:<id>` - Conversation metadata
+  - `bubbleId:<composer_id>:<bubble_id>` - Individual messages
+
+See `INVESTIGATION.md` for complete details.
+
+## Next Steps to Publish
+
+To make this installable via `uv tool install`:
+
+1. **Choose a package name** (check PyPI availability)
+2. **Add a LICENSE file** (MIT, Apache 2.0, etc.)
+3. **Update author info** in `pyproject.toml`
+4. **Add tests** using pytest
+5. **Build the package:**
+   ```bash
+   uv build
+   ```
+6. **Publish to PyPI:**
+   ```bash
+   uv publish
+   ```
+7. **Install as tool:**
+   ```bash
+   uv tool install cursor-conversation-cli
+   ```
+
+## Development Commands
+
+```bash
+# Sync dependencies
+uv sync
+
+# Add a dependency
+uv add <package>
+
+# Run tests (when added)
+uv run pytest
+
+# Format code
+uv run black .
+
+# Lint code
+uv run ruff check .
+```
+
+## Platform Support
+
+- **Linux:** ✅ Tested and working
+- **macOS:** 🔲 Should work with path adjustment
+- **Windows:** 🔲 Should work with path adjustment
+
+Database paths:
+- Linux: `~/.config/Cursor/User/globalStorage/state.vscdb`
+- macOS: `~/Library/Application Support/Cursor/User/globalStorage/state.vscdb`
+- Windows: `%APPDATA%\Cursor\User\globalStorage\state.vscdb`
+
+## Features
+
+- ✅ List all conversations with metadata
+- ✅ Show individual conversations
+- ✅ Export to Markdown, JSON, or Text
+- ✅ Search conversations
+- ✅ Display statistics
+- ✅ Rich terminal output with tables
+- ✅ Partial ID matching
+- 🔲 Rich text rendering
+- 🔲 Code block syntax highlighting
+- 🔲 HTML export
+- 🔲 Date filtering
+- 🔲 Conversation deletion/archiving
+
+## Use Cases
+
+1. **Documentation** - Export important conversations for reference
+2. **Sharing** - Share AI conversations with team members
+3. **Search** - Find past conversations about specific topics
+4. **Analytics** - Analyze AI usage patterns
+5. **Backup** - Create backups of valuable conversations
+6. **Migration** - Move conversations between systems
+
+## Technical Notes
+
+- Uses SQLite for database access (built-in Python)
+- Click for CLI framework (excellent UX)
+- Rich for beautiful terminal output
+- No external dependencies besides click and rich
+- Database is read-only (safe to use)
+- Supports partial ID matching for convenience
+
+## Contributing Ideas
+
+- Add tests for database operations
+- Implement rich text rendering
+- Add code syntax highlighting
+- Support multiple platforms automatically
+- Add conversation statistics/analytics
+- Implement conversation tagging
+- Add conversation import/export in standard formats
+- Create a web UI alternative

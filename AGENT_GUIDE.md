@@ -1,0 +1,281 @@
+# Agent Guide: Using CCS (Cursor Conversation Search)
+
+## Overview
+
+`ccs` is a CLI tool for accessing and searching Cursor agent conversations stored locally in SQLite. Use this tool when you need to reference past conversations, find previous solutions, or help users locate specific discussions.
+
+## When to Use This Tool
+
+Use `ccs` when:
+- User asks about a previous conversation ("What did we discuss about X?")
+- Looking for code solutions from past sessions
+- User wants to export or share a conversation
+- Investigating what was done in recent sessions
+- User mentions they "already worked on this before"
+
+## Core Commands
+
+### 1. List Recent Conversations
+```bash
+# Show recent conversations
+ccs list --limit 10
+
+# Show conversations from last 3 days
+ccs list --since "3d"
+
+# Show today's conversations
+ccs list --since "1d"
+```
+
+**When to use:** Quick overview of recent work, finding conversation by recency.
+
+### 2. Search by Content
+```bash
+# Search all conversations for keyword
+ccs search "authentication"
+
+# Search recent conversations only
+ccs search "database migration" --since "1w"
+```
+
+**When to use:** User remembers topic/keywords but not exact title or when it was.
+
+### 3. Show Specific Conversation
+```bash
+# Show by title
+ccs show "authentication setup"
+
+# Show by title with time filter (helps with ambiguity)
+ccs show "config" --since "3d"
+
+# Show by ID (if you have it from list/search)
+ccs show a1b2c3d4
+```
+
+**When to use:** Display full conversation content, review detailed discussion.
+
+### 4. Export Conversation
+```bash
+# Export to markdown
+ccs export "api implementation" --format markdown --output api-notes.md
+
+# Export recent conversation
+ccs export "tests" --since "1d" --format markdown
+```
+
+**When to use:** User wants to save, share, or document a conversation.
+
+## Time Filtering Best Practices
+
+### Relative Time Formats (Preferred)
+- **Minutes:** `15m`, `30m`
+- **Hours:** `1h`, `4h`, `12h`
+- **Days:** `1d`, `3d`, `7d`
+- **Weeks:** `1w`, `2w`
+- **Months:** `1mo`, `3mo`
+
+### Common Time Patterns
+```bash
+# Today's work
+--since "1d"
+
+# This week
+--since "1w"
+
+# Recent work (last 3 days is often useful)
+--since "3d"
+
+# Last hour (very recent)
+--since "1h"
+```
+
+## Handling Multiple Matches
+
+When queries match multiple conversations, the tool shows disambiguation:
+
+```
+Multiple conversations match 'config':
+  1. Config file setup - a1b2c3d4...
+  2. Database config - e5f6g7h8...
+
+Please be more specific
+```
+
+**Agent response:** Add more context to the query or use time filtering:
+```bash
+# More specific title
+ccs show "database config"
+
+# Or use time filter
+ccs show "config" --since "3d"
+```
+
+## Common Agent Workflows
+
+### Workflow 1: User Asks About Past Work
+**User:** "What did we do with the authentication yesterday?"
+
+**Agent steps:**
+1. Search recent conversations: `ccs search "authentication" --since "2d"`
+2. If unique match found, show it: `ccs show <id>`
+3. Summarize key points from the conversation for the user
+
+### Workflow 2: Find Similar Previous Solution
+**User:** "I think we solved this database issue before"
+
+**Agent steps:**
+1. Search for keywords: `ccs search "database error"`
+2. Review results, identify relevant conversation
+3. Reference the solution or show the conversation to user
+
+### Workflow 3: Export for Documentation
+**User:** "Can you save our API discussion from earlier today?"
+
+**Agent steps:**
+1. Find the conversation: `ccs show "api" --since "1d"`
+2. Export it: `ccs export "api" --since "1d" --format markdown --output api-discussion.md`
+3. Confirm the export location
+
+### Workflow 4: Investigate Recent Changes
+**User:** "What have I been working on this week?"
+
+**Agent steps:**
+1. List recent conversations: `ccs list --since "1w"`
+2. Summarize the conversation titles and timestamps
+3. Offer to show details of any specific conversation
+
+## Query Construction Tips
+
+### Title-Based Queries
+- Use **distinctive words** from the conversation title
+- Shorter queries may match multiple conversations
+- Add time filters to disambiguate: `--since "3d"`
+
+### Content-Based Search
+- Use `search` for keywords that might be in messages
+- Use `show` when you know (or can guess) the title
+- Time filters are especially useful with search
+
+### ID vs Title
+- **IDs** are precise but hard to remember
+- **Titles** are human-readable and fuzzy-matched
+- Use IDs from `list` or `search` output for precise access
+
+## Output Formats
+
+### Text (default)
+- Human-readable
+- Good for agent review and summarization
+- Use for analysis before presenting to user
+
+### JSON
+```bash
+ccs show "conversation" --format json
+```
+- Structured data
+- Use when you need to parse or process programmatically
+- Contains full conversation metadata
+
+### Markdown (export only)
+```bash
+ccs export "conversation" --format markdown
+```
+- Shareable format
+- Good for documentation
+- Preserves conversation structure
+
+## Important Notes
+
+### Conversation Titles
+- Automatically generated by Cursor from conversation content
+- Usually descriptive of the main topic
+- May include subtitle (often a filename)
+- Use fuzzy matching: "auth" matches "authentication setup"
+
+### Time Zones
+- All times are local to the system
+- `--since` is **inclusive** (>= time)
+- `--before` is **exclusive** (< time)
+
+### Performance
+- `list` is fast (metadata only)
+- `search` is slower (reads full messages)
+- `show` reads one conversation (moderate)
+- Use time filters to improve search performance
+
+## Error Handling
+
+### "No conversations found"
+- Time filter too narrow: Try broader window
+- Query doesn't match: Try different keywords
+- No conversations exist: User hasn't used Cursor recently
+
+### "Multiple conversations match"
+- Add more specific terms to query
+- Use time filter: `--since "3d"`
+- Ask user which one they mean
+
+### "Conversation not found"
+- Verify the query/ID is correct
+- Check if conversation was archived
+- Try searching instead of showing
+
+## Example Agent Prompts
+
+### Helpful Responses
+```
+I found 3 conversations about authentication from the last week.
+Would you like me to show you the most recent one?
+
+I can see you worked on "Database migration" 2 days ago.
+Let me pull up that conversation...
+
+I found your API implementation discussion from yesterday.
+Would you like me to export it to markdown?
+```
+
+### When Uncertain
+```
+I see multiple conversations about "config" - could you clarify which one?
+The most recent was "Config file setup" from 2 days ago.
+
+I don't see any conversations about X in the last week.
+Would you like me to search further back?
+```
+
+## Quick Reference
+
+```bash
+# Most common agent usage patterns:
+
+# List today's work
+ccs list --since "1d" --limit 10
+
+# Search recent conversations
+ccs search "keyword" --since "3d"
+
+# Show specific conversation
+ccs show "title phrase" --since "1w"
+
+# Export recent discussion
+ccs export "topic" --since "1d" --format markdown
+
+# Get detailed help
+ccs <command> --help
+```
+
+## Integration Tips
+
+- **Proactive suggestions:** When user mentions past work, offer to search
+- **Context awareness:** Use time filters based on user's timeline references
+- **Confirm before showing:** Ask if user wants to see full conversation
+- **Summarize first:** Provide overview before dumping full conversation
+- **Export when needed:** Offer to save important discussions
+
+## Limitations
+
+- Only accesses conversations stored locally
+- Cannot modify or delete conversations
+- No access to code execution results (only conversation text)
+- Time filters are approximate for months/years
+- Database must exist (Cursor must have been used)
