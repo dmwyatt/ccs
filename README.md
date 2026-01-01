@@ -19,46 +19,9 @@ This guide teaches AI agents **when and how** to use CCS effectively:
 
 The guide focuses on decision-making and integration patterns. For command syntax, agents can run `ccs --help`.
 
-## Investigation Findings
+## Technical Details
 
-### Storage Location
-
-Cursor stores agent conversations in a SQLite database at:
-```
-~/.config/Cursor/User/globalStorage/state.vscdb
-```
-
-### Database Structure
-
-The database uses a key-value store pattern with the `cursorDiskKV` table:
-
-#### Key Patterns:
-
-1. **`composerData:<composerId>`** - Conversation threads
-   - Contains metadata about the conversation
-   - Fields: composerId, status, createdAt, modelConfig, text, context, capabilities
-   - One entry per conversation/chat session
-
-2. **`bubbleId:<composerId>:<bubbleId>`** - Individual messages
-   - Format links messages to their parent conversation
-   - Fields: bubbleId, type, text, richText, createdAt, toolResults, codeBlocks, images
-   - Type values: 1 = user message, 2 = assistant message
-
-3. **Other key types** (discovered but not yet explored):
-   - `checkpointId:*` - Conversation checkpoints/state saves
-   - `codeBlockDiff:*` - Code change diffs
-   - `messageRequestContext:*` - Context for API requests
-   - `inlineDiffs-<workspaceId>` - Per-workspace inline diffs
-
-### Additional Storage Locations
-
-- `~/.cursor/ai-tracking/ai-code-tracking.db` - Tracks AI-generated code changes
-  - Tables: `ai_code_hashes`, `scored_commits`, `tracking_state`
-
-- `~/.cursor/projects/<project-path>/` - Per-project data
-  - Rules and project-specific settings
-
-- `~/.config/Cursor/User/workspaceStorage/<workspace-id>/state.vscdb` - Per-workspace state
+For information about how Cursor stores conversations locally, including database structure and storage locations, see [INVESTIGATION.md](INVESTIGATION.md).
 
 ## Features
 
