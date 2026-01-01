@@ -5,11 +5,7 @@ A Python CLI tool to read and export Cursor agent conversations from the local S
 ## Installation
 
 ```bash
-# Install directly from GitHub
 uv tool install git+https://github.com/dmwyatt/ccs.git
-
-# Or from PyPI (if published)
-uv tool install ccs
 ```
 
 ## Usage
