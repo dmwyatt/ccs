@@ -64,19 +64,47 @@ class CursorDatabase:
         conn = self._connect()
         cursor = conn.cursor()
 
-        cursor.execute('SELECT key, value FROM cursorDiskKV WHERE key LIKE "composerData:%"')
+        # Use CTE to batch count messages, then JOIN to get only non-empty conversations
+        # This avoids N+1 queries (one COUNT per conversation)
+        if include_empty:
+            # LEFT JOIN to include conversations with no messages
+            cursor.execute('''
+                WITH bubble_counts AS (
+                    SELECT
+                        SUBSTR(key, 10, INSTR(SUBSTR(key, 10), ':') - 1) as composer_id,
+                        COUNT(*) as msg_count
+                    FROM cursorDiskKV
+                    WHERE key LIKE 'bubbleId:%'
+                    GROUP BY composer_id
+                )
+                SELECT c.key, c.value, COALESCE(b.msg_count, 0) as msg_count
+                FROM cursorDiskKV c
+                LEFT JOIN bubble_counts b ON SUBSTR(c.key, 14) = b.composer_id
+                WHERE c.key LIKE 'composerData:%' AND c.value IS NOT NULL
+            ''')
+        else:
+            # INNER JOIN to only get conversations with messages
+            cursor.execute('''
+                WITH bubble_counts AS (
+                    SELECT
+                        SUBSTR(key, 10, INSTR(SUBSTR(key, 10), ':') - 1) as composer_id,
+                        COUNT(*) as msg_count
+                    FROM cursorDiskKV
+                    WHERE key LIKE 'bubbleId:%'
+                    GROUP BY composer_id
+                )
+                SELECT c.key, c.value, b.msg_count
+                FROM cursorDiskKV c
+                JOIN bubble_counts b ON SUBSTR(c.key, 14) = b.composer_id
+                WHERE c.key LIKE 'composerData:%' AND c.value IS NOT NULL
+            ''')
 
         conversations = []
         for row in cursor.fetchall():
             data = json.loads(row[1])
             composer_id = data.get('composerId', row[0].split(':')[1])
             created_at = data.get('createdAt', 0)
-
-            # Count messages for this conversation
-            cursor.execute(
-                f'SELECT COUNT(*) FROM cursorDiskKV WHERE key LIKE "bubbleId:{composer_id}:%"'
-            )
-            msg_count = cursor.fetchone()[0]
+            msg_count = row[2]
 
             conversations.append({
                 'id': composer_id,
@@ -93,10 +121,6 @@ class CursorDatabase:
             })
 
         conn.close()
-
-        # Filter out empty conversations by default (status="none" with 0 messages)
-        if not include_empty:
-            conversations = [c for c in conversations if c['message_count'] > 0]
 
         # Apply time filtering if requested
         if since or before:
