@@ -71,101 +71,36 @@ Filter conversations by when they were created using human-friendly expressions:
 
 ## Installation
 
-### For Development
-
-```bash
-cd ccs
-uv sync
-```
-
-### As a Tool
-
-#### From GitHub
-
 ```bash
 # Install directly from GitHub
 uv tool install git+https://github.com/dmwyatt/ccs.git
 
-# Or from a local clone
-uv tool install /path/to/ccs
-
-# Or from the current directory
-cd ccs
-uv tool install .
-```
-
-#### From PyPI (if published)
-
-```bash
+# Or from PyPI (if published)
 uv tool install ccs
 ```
 
 ## Usage
 
-### Development Mode
-
-Run commands using `uv run`:
-
 ```bash
 # Show database info and statistics
-uv run ccs info
+ccs info
 
-# List all conversations
-uv run ccs list
-
-# List with options
-uv run ccs list --limit 10
-uv run ccs list --all  # Include archived
-
-# Time filtering - relative times (abbreviated)
-uv run ccs list --since "15m"
-uv run ccs list --since "3d"
-uv run ccs list --since "4h"
-
-# Time filtering - absolute dates
-uv run ccs list --since "2026-01-01"
-uv run ccs list --before "2026-01-01"
-uv run ccs list --since "2025-12-01" --before "2026-01-01"
-
-# Show a conversation by title (fuzzy matching)
-uv run ccs show "application lister"
-
-# Show with time filter (helps with disambiguation)
-uv run ccs show "folder" --since "3d"
-
-# Or by partial ID
-uv run ccs show e39aa420
-
-# Show as JSON
-uv run ccs show "python script" --format json
-
-# Export to markdown by title
-uv run ccs export "home directory" --format markdown --output chat.md
-
-# Export with time filter
-uv run ccs export "folder" --since "1w" --format markdown
-
-# Export by ID
-uv run ccs export e39aa420 --format json
-
-# Search conversations (searches titles, content, and messages)
-uv run ccs search "folder"
-
-# Search with time filtering
-uv run ccs search "folder" --since "3d"
-uv run ccs search "python" --since "2026-01-01"
-```
-
-### Installed as Tool
-
-Once installed via `uv tool install`, use directly:
-
-```bash
+# List conversations (most recent first)
 ccs list
-ccs show <conversation-id>
-ccs export <conversation-id> --format markdown
-ccs search "query"
+ccs list --limit 10 --since "3d"
+
+# Show a conversation by title (fuzzy matching) or ID
+ccs show "application lister"
+ccs show e39aa420 --format json
+
+# Export to file
+ccs export "home directory" --format markdown --output chat.md
+
+# Search conversations (titles and message content)
+ccs search "python" --since "1w"
 ```
+
+Time filters (`--since`, `--before`) work on all commands. See DateTime Filtering above for syntax.
 
 ## Next Steps
 
@@ -177,3 +112,18 @@ Potential improvements:
 5. Add conversation deletion/archiving capabilities
 6. Support multiple Cursor profiles
 7. Add conversation statistics and analytics
+
+## Development
+
+```bash
+# Setup
+cd ccs
+uv sync
+
+# Run during development (no install needed)
+uv run ccs <command>
+
+# Or install locally and iterate
+uv tool install --reinstall .
+ccs <command>
+```
