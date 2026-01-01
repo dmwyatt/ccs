@@ -14,15 +14,9 @@ uv run ccs <command>
 # Install/update as global tool (required after code changes)
 uv tool install --force .
 
-# Add/remove dependencies
+# Add/remove dependencies (if needed)
 uv add <package>
-uv add --dev <package>
 uv remove <package>
-
-# Run tests/linting
-uv run pytest
-uv run black ccs/
-uv run ruff check ccs/
 ```
 
 ## Typical Workflow
