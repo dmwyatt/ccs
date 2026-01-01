@@ -51,3 +51,14 @@ def my_function():
 ```
 
 **Exception**: Local imports are only acceptable when resolving circular import issues that cannot be fixed through code restructuring.
+
+### Database Schema Changes
+
+**IMPORTANT**: When modifying code that changes expectations about the Cursor database schema (either relational structure or JSON field requirements), you **must** also update the `check-db` command in `cli.py`.
+
+This includes changes to:
+- Expected table names or columns
+- Required/expected key patterns (e.g., `composerData:%`, `bubbleId:%`)
+- Required or expected JSON fields in `_validate_json_schema()` field specs
+
+Run `ccs check-db` after making changes to verify the schema expectations are correct.
