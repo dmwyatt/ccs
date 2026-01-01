@@ -2,6 +2,39 @@
 
 A Python CLI tool to read and export Cursor agent conversations from the local SQLite database.
 
+## Installation
+
+```bash
+# Install directly from GitHub
+uv tool install git+https://github.com/dmwyatt/ccs.git
+
+# Or from PyPI (if published)
+uv tool install ccs
+```
+
+## Usage
+
+```bash
+# Show database info and statistics
+ccs info
+
+# List conversations (most recent first)
+ccs list
+ccs list --limit 10 --since "3d"
+
+# Show a conversation by title (fuzzy matching) or ID
+ccs show "application lister"
+ccs show e39aa420 --format json
+
+# Export to file
+ccs export "home directory" --format markdown --output chat.md
+
+# Search conversations (titles and message content)
+ccs search "python" --since "1w"
+```
+
+Time filters (`--since`, `--before`) work on all commands. See DateTime Filtering below for syntax.
+
 ## For AI Agents
 
 **[AGENT_GUIDE.md](AGENT_GUIDE.md)** - Integration guide for AI agents (Claude, Cursor, etc.)
@@ -68,39 +101,6 @@ Filter conversations by when they were created using human-friendly expressions:
 - `YYYY-MM-DD` (e.g., "2026-01-01")
 - `YYYY-MM-DD HH:MM` (e.g., "2026-01-01 14:30")
 - `MM/DD/YYYY`
-
-## Installation
-
-```bash
-# Install directly from GitHub
-uv tool install git+https://github.com/dmwyatt/ccs.git
-
-# Or from PyPI (if published)
-uv tool install ccs
-```
-
-## Usage
-
-```bash
-# Show database info and statistics
-ccs info
-
-# List conversations (most recent first)
-ccs list
-ccs list --limit 10 --since "3d"
-
-# Show a conversation by title (fuzzy matching) or ID
-ccs show "application lister"
-ccs show e39aa420 --format json
-
-# Export to file
-ccs export "home directory" --format markdown --output chat.md
-
-# Search conversations (titles and message content)
-ccs search "python" --since "1w"
-```
-
-Time filters (`--since`, `--before`) work on all commands. See DateTime Filtering above for syntax.
 
 ## Next Steps
 
