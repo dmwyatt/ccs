@@ -94,7 +94,7 @@ Filter conversations by when they were created using human-friendly expressions:
 ### For Development
 
 ```bash
-cd ccsersation-cli
+cd ccs
 uv sync
 ```
 
@@ -104,20 +104,20 @@ uv sync
 
 ```bash
 # Install directly from GitHub
-uv tool install git+https://github.com/yourusername/ccsersation-cli.git
+uv tool install git+https://github.com/dmwyatt/ccs.git
 
 # Or from a local clone
-uv tool install /path/to/ccsersation-cli
+uv tool install /path/to/ccs
 
 # Or from the current directory
-cd ccsersation-cli
+cd ccs
 uv tool install .
 ```
 
 #### From PyPI (if published)
 
 ```bash
-uv tool install ccsersation-cli
+uv tool install ccs
 ```
 
 ## Usage
