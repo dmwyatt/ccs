@@ -1,5 +1,6 @@
 """Formatters for conversation output."""
 
+import json
 from abc import ABC, abstractmethod
 from typing import List, Dict, Any, Optional
 
@@ -212,6 +213,8 @@ class RichFormatter(Formatter):
         show_code_diff: bool = False,
         show_code_details: bool = False,
         show_empty: bool = False,
+        show_thinking: bool = False,
+        show_tool_calls: bool = False,
         db = None  # Database instance for fetching diff data
     ) -> Group:
         """Format conversation as Rich chat bubbles.
@@ -222,6 +225,8 @@ class RichFormatter(Formatter):
             show_code_diff: Whether to show code diffs
             show_code_details: Whether to show detailed code block info
             show_empty: Whether to show empty messages
+            show_thinking: Whether to expand thinking/reasoning traces
+            show_tool_calls: Whether to expand tool call details
             db: Database instance (needed for fetching diff data)
 
         Returns:
@@ -247,7 +252,7 @@ class RichFormatter(Formatter):
         # Extract code block data from conversation (needed for counting visible messages)
         code_block_data = conversation.get('codeBlockData', {})
 
-        # Count visible messages (non-empty text or has code blocks, or all if show_empty)
+        # Count visible messages (non-empty text, code blocks, thinking, or tool calls)
         if show_empty:
             visible_count = len(messages)
         else:
@@ -255,7 +260,9 @@ class RichFormatter(Formatter):
             for msg in messages:
                 has_content = (msg.get('text') or '').strip()
                 has_code_blocks = bool(get_code_blocks_for_message(msg['id'], code_block_data))
-                if has_content or has_code_blocks:
+                has_thinking = bool(msg.get('thinking'))
+                has_tool_call = bool(msg.get('tool_call'))
+                if has_content or has_code_blocks or has_thinking or has_tool_call:
                     visible_count += 1
 
         title_display = f"[bold cyan]{title}[/bold cyan]"
@@ -298,7 +305,9 @@ class RichFormatter(Formatter):
             # Consider messages with only whitespace as empty
             text = msg.get('text', '')
             has_content = text.strip() if text else False
-            is_empty = not has_content and not code_blocks
+            has_thinking = bool(msg.get('thinking'))
+            has_tool_call = bool(msg.get('tool_call'))
+            is_empty = not has_content and not code_blocks and not has_thinking and not has_tool_call
             if is_empty and not show_empty:
                 continue
 
@@ -326,6 +335,99 @@ class RichFormatter(Formatter):
             # Add markdown-rendered text if present
             if msg.get('text'):
                 message_renderables.append(Markdown(msg['text']))
+
+            # Show thinking traces (reasoning/extended thinking)
+            if msg.get('thinking'):
+                if message_renderables:
+                    message_renderables.append("")  # Add spacing
+                duration_ms = msg.get('thinking_duration_ms')
+                duration_str = f" ({duration_ms}ms)" if duration_ms else ""
+                if show_thinking:
+                    # Expanded view - show full thinking content
+                    thinking_content = msg['thinking']
+                    message_renderables.append(
+                        Panel(
+                            Markdown(thinking_content),
+                            title=f"[magenta]💭 Thinking{duration_str}[/magenta]",
+                            title_align="left",
+                            border_style="magenta",
+                            padding=(0, 1),
+                        )
+                    )
+                else:
+                    # Collapsed view - just show summary
+                    thinking_preview = msg['thinking'][:100].replace('\n', ' ')
+                    if len(msg['thinking']) > 100:
+                        thinking_preview += "..."
+                    message_renderables.append(
+                        f"[magenta]💭 Thinking{duration_str}:[/magenta] [dim]{thinking_preview}[/dim]"
+                    )
+
+            # Show tool calls (actual tool invocations)
+            if msg.get('tool_call'):
+                if message_renderables:
+                    message_renderables.append("")  # Add spacing
+                tool_data = msg['tool_call']
+                tool_name = tool_data.get('name', 'unknown')
+                tool_status = tool_data.get('status', 'unknown')
+                if show_tool_calls:
+                    # Expanded view - show full tool call details
+                    tool_info_lines = [f"[bold]Tool:[/bold] {tool_name}"]
+                    tool_info_lines.append(f"[bold]Status:[/bold] {tool_status}")
+
+                    # Show the command/args
+                    raw_args = tool_data.get('rawArgs')
+                    if raw_args:
+                        try:
+                            args_data = json.loads(raw_args)
+                            if 'command' in args_data:
+                                tool_info_lines.append(f"[bold]Command:[/bold] {args_data['command']}")
+                            if 'explanation' in args_data:
+                                tool_info_lines.append(f"[bold]Explanation:[/bold] {args_data['explanation']}")
+                        except (json.JSONDecodeError, TypeError):
+                            tool_info_lines.append(f"[bold]Args:[/bold] {raw_args[:200]}...")
+
+                    # Show result summary
+                    result = tool_data.get('result')
+                    if result:
+                        try:
+                            result_data = json.loads(result)
+                            output = result_data.get('output', '')
+                            if output:
+                                # Truncate long output
+                                if len(output) > 500:
+                                    output = output[:500] + "\n... (truncated)"
+                                tool_info_lines.append(f"\n[bold]Output:[/bold]\n{output}")
+                        except (json.JSONDecodeError, TypeError):
+                            tool_info_lines.append(f"[bold]Result:[/bold] {result[:200]}...")
+
+                    message_renderables.append(
+                        Panel(
+                            "\n".join(tool_info_lines),
+                            title=f"[yellow]🔧 Tool Call[/yellow]",
+                            title_align="left",
+                            border_style="yellow",
+                            padding=(0, 1),
+                        )
+                    )
+                else:
+                    # Collapsed view - just show tool name and status
+                    # Try to extract command for terminal commands
+                    command_preview = ""
+                    raw_args = tool_data.get('rawArgs')
+                    if raw_args:
+                        try:
+                            args_data = json.loads(raw_args)
+                            if 'command' in args_data:
+                                cmd = args_data['command']
+                                if len(cmd) > 60:
+                                    cmd = cmd[:60] + "..."
+                                command_preview = f": {cmd}"
+                        except (json.JSONDecodeError, TypeError):
+                            pass
+                    message_renderables.append(
+                        f"[yellow]🔧 {tool_name}{command_preview}[/yellow] [dim]({tool_status})[/dim]"
+                    )
 
             # Show code blocks (can appear with or without text)
             if code_blocks:

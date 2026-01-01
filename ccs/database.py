@@ -135,6 +135,15 @@ class CursorDatabase:
             model_info = data.get('modelInfo', {})
             model_name = model_info.get('modelName') if model_info else None
 
+            # Extract thinking data (extended thinking / reasoning traces)
+            thinking_data = data.get('thinking')
+            thinking_text = None
+            if thinking_data and isinstance(thinking_data, dict):
+                thinking_text = thinking_data.get('text')
+
+            # Extract tool call data (toolFormerData contains actual tool invocations)
+            tool_former_data = data.get('toolFormerData')
+
             messages.append({
                 'id': data.get('bubbleId'),
                 'type': 'user' if data.get('type') == 1 else 'assistant',
@@ -142,6 +151,11 @@ class CursorDatabase:
                 'text': data.get('text', ''),
                 'rich_text': data.get('richText', ''),
                 'model': model_name,  # Per-message model (None, "default", or specific model name)
+                # Thinking / reasoning traces
+                'thinking': thinking_text,
+                'thinking_duration_ms': data.get('thinkingDurationMs'),
+                # Tool calls (actual tool invocations, not just results)
+                'tool_call': tool_former_data,
                 # Additional context
                 'tool_results': data.get('toolResults', []),
                 'suggested_code_blocks': data.get('suggestedCodeBlocks', []),

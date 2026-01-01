@@ -113,7 +113,9 @@ def find_conversation(db: CursorDatabase, query: str, since: str = None, before:
 @click.option('--show-code-details', is_flag=True, help='Show detailed code block information')
 @click.option('--show-code-diff', is_flag=True, help='Show code diffs for code blocks')
 @click.option('--show-empty', is_flag=True, help='Show empty assistant messages (streaming artifacts)')
-def show(query: str, output_format: str, include_empty: bool, since: str, before: str, show_code_details: bool, show_code_diff: bool, show_empty: bool):
+@click.option('--show-thinking', is_flag=True, help='Expand thinking/reasoning traces')
+@click.option('--show-tool-calls', is_flag=True, help='Expand tool call details')
+def show(query: str, output_format: str, include_empty: bool, since: str, before: str, show_code_details: bool, show_code_diff: bool, show_empty: bool, show_thinking: bool, show_tool_calls: bool):
     """Show a specific conversation by ID or title, optionally filtered by time."""
     try:
         db = CursorDatabase()
@@ -136,6 +138,8 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
                 show_code_diff=show_code_diff,
                 show_code_details=show_code_details,
                 show_empty=show_empty,
+                show_thinking=show_thinking,
+                show_tool_calls=show_tool_calls,
                 db=db
             )
             console.print(output)
@@ -294,7 +298,7 @@ def check_db():
         bubble_fields = {
             'required': ['bubbleId', 'type'],
             'expected': ['createdAt', 'text'],
-            'optional': ['richText', 'toolResults', 'suggestedCodeBlocks', 'images', 'capabilities', 'context', 'modelInfo']
+            'optional': ['richText', 'toolResults', 'suggestedCodeBlocks', 'images', 'capabilities', 'context', 'modelInfo', 'thinking', 'thinkingDurationMs', 'toolFormerData']
         }
         if bubble_rows:
             _validate_json_schema(bubble_rows, bubble_fields, console, warnings, "bubbleId")
