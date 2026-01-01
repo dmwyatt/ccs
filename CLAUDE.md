@@ -12,7 +12,7 @@ uv sync
 uv run ccs <command>
 
 # Install/update as global tool (required after code changes)
-uv tool install --force .
+uv tool install --reinstall .
 
 # Add/remove dependencies (if needed)
 uv add <package>
@@ -22,7 +22,32 @@ uv remove <package>
 ## Typical Workflow
 
 1. Edit code
-2. Reinstall: `uv tool install --force .`
+2. Reinstall: `uv tool install --reinstall .`
 3. Test: `ccs <command>`
 
 Or skip step 2 and use: `uv run ccs <command>`
+
+**Note**: Use `--reinstall` instead of `--force` to ensure the tool cache is properly cleared and updated.
+
+## Coding Standards
+
+### Import Conventions
+
+**IMPORTANT**: All imports must be at the top of the file. Never use local imports (imports inside functions) unless absolutely necessary to resolve circular dependencies.
+
+**Bad**:
+```python
+def my_function():
+    from pathlib import Path  # ❌ Local import
+    return Path("file.txt")
+```
+
+**Good**:
+```python
+from pathlib import Path  # ✅ Top-level import
+
+def my_function():
+    return Path("file.txt")
+```
+
+**Exception**: Local imports are only acceptable when resolving circular import issues that cannot be fixed through code restructuring.

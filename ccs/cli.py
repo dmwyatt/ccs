@@ -116,13 +116,48 @@ def find_conversation(db: CursorDatabase, query: str, since: str = None, before:
     return None, None
 
 
+def get_code_blocks_for_message(bubble_id: str, code_block_data: dict) -> list:
+    """Extract code blocks associated with a specific message bubble.
+
+    Args:
+        bubble_id: The message bubble ID
+        code_block_data: The codeBlockData from the conversation
+
+    Returns:
+        List of code block info dictionaries
+    """
+    code_blocks = []
+
+    # codeBlockData structure: {file_uri: {codeblock_id: {...data, bubbleId: ...}}}
+    for file_uri, blocks in code_block_data.items():
+        for block_id, block_data in blocks.items():
+            if block_data.get('bubbleId') == bubble_id:
+                # Extract file path from URI
+                file_path = file_uri.replace('file://', '')
+                # Get just the filename
+                filename = Path(file_path).name
+
+                code_blocks.append({
+                    'file': filename,
+                    'full_path': file_path,
+                    'language': block_data.get('languageId', 'unknown'),
+                    'status': block_data.get('status', 'unknown'),
+                    'diff_id': block_data.get('diffId', ''),
+                    'created_at': block_data.get('createdAt', ''),
+                })
+
+    return code_blocks
+
+
 @main.command()
 @click.argument('query')
 @click.option('--format', 'output_format', type=click.Choice(['text', 'json']), default='text')
 @click.option('--include-empty', is_flag=True, help='Include empty conversations (0 messages)')
 @click.option('--since', help='Filter to conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Filter to conversations before this time (same format as --since)')
-def show(query: str, output_format: str, include_empty: bool, since: str, before: str):
+@click.option('--show-code-details', is_flag=True, help='Show detailed code block information')
+@click.option('--show-empty', is_flag=True, help='Show empty assistant messages (streaming artifacts)')
+def show(query: str, output_format: str, include_empty: bool, since: str, before: str, show_code_details: bool, show_empty: bool):
     """Show a specific conversation by ID or title, optionally filtered by time."""
     try:
         db = CursorDatabase()
@@ -161,21 +196,45 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
 
         console.print()
 
+        # Extract code block data from conversation
+        code_block_data = conversation.get('codeBlockData', {})
+
+        msg_num = 0
         for i, msg in enumerate(messages, 1):
             created = msg.get('created', '')
             msg_type = msg['type'].upper()
             color = "green" if msg['type'] == 'user' else "blue"
 
+            # Check for code blocks associated with this message
+            code_blocks = get_code_blocks_for_message(msg['id'], code_block_data)
+
+            # Skip empty messages unless --show-empty is set
+            is_empty = not msg['text'] and not code_blocks
+            if is_empty and not show_empty:
+                continue
+
+            msg_num += 1
             console.print(f"\n[{color}]{'='*70}[/{color}]")
-            console.print(f"[{color} bold]{i}. {msg_type} - {created}[/{color} bold]")
+            console.print(f"[{color} bold]{msg_num}. {msg_type} - {created}[/{color} bold]")
             console.print(f"[{color}]{'='*70}[/{color}]")
 
             if msg['text']:
                 console.print(msg['text'])
+            elif code_blocks:
+                # Empty message with code blocks - show summary
+                for cb in code_blocks:
+                    summary = f"[cyan][Code edit: {cb['file']} ({cb['language']}) - {cb['status']}][/cyan]"
+                    console.print(summary)
 
-            # Show code blocks if present
+                    if show_code_details:
+                        console.print(f"  [dim]Full path: {cb['full_path']}[/dim]")
+                        console.print(f"  [dim]Diff ID: {cb['diff_id']}[/dim]")
+                        if cb['created_at']:
+                            console.print(f"  [dim]Created: {cb['created_at']}[/dim]")
+
+            # Show code blocks if present in message metadata (different from codeBlockData)
             if msg.get('suggested_code_blocks'):
-                console.print(f"\n[yellow]Code blocks: {len(msg['suggested_code_blocks'])}[/yellow]")
+                console.print(f"\n[yellow]Suggested code blocks: {len(msg['suggested_code_blocks'])}[/yellow]")
 
             # Show tool results if present
             if msg.get('tool_results'):
