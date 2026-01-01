@@ -20,7 +20,6 @@ ccs/
 │   ├── cli.py                 # CLI commands (click-based)
 │   ├── database.py            # Database interface
 │   └── datetime_utils.py      # Time filtering utilities
-├── cursor_conversation_reader.py  # Standalone demo script
 ├── pyproject.toml             # Project configuration
 ├── uv.lock                    # Dependency lock file
 ├── README.md                  # User documentation
@@ -48,12 +47,6 @@ uv run ccs export <title or id> --format markdown
 
 # Search
 uv run ccs search "query"
-```
-
-### Run the Demo Script
-
-```bash
-python3 cursor_conversation_reader.py
 ```
 
 ## Key Files

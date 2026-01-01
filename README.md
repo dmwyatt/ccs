@@ -204,14 +204,6 @@ ccs export <conversation-id> --format markdown
 ccs search "query"
 ```
 
-## Demo Script
-
-`cursor_conversation_reader.py` is a standalone demonstration script that shows:
-- Basic database access patterns
-- Listing all conversations
-- Extracting messages from a conversation
-- Parsing composer metadata
-
 ## Next Steps
 
 Potential improvements:
