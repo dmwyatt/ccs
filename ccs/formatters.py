@@ -101,7 +101,10 @@ class MarkdownFormatter(Formatter):
         # Messages section
         for i, msg in enumerate(messages, 1):
             # Skip empty messages unless show_empty is True
-            if not msg.get('text') and not show_empty:
+            # Consider messages with only whitespace as empty
+            text = msg.get('text', '')
+            has_content = text.strip() if text else False
+            if not has_content and not show_empty:
                 continue
 
             msg_type = msg['type'].upper()
@@ -238,7 +241,10 @@ class RichFormatter(Formatter):
             code_blocks = get_code_blocks_for_message(msg['id'], code_block_data)
 
             # Skip empty messages unless --show-empty is set
-            is_empty = not msg.get('text') and not code_blocks
+            # Consider messages with only whitespace as empty
+            text = msg.get('text', '')
+            has_content = text.strip() if text else False
+            is_empty = not has_content and not code_blocks
             if is_empty and not show_empty:
                 continue
 
