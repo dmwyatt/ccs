@@ -28,8 +28,8 @@ class CursorDatabase:
             raise FileNotFoundError(f"Cursor database not found at {self.db_path}")
 
     def _connect(self) -> sqlite3.Connection:
-        """Create a database connection."""
-        return sqlite3.connect(self.db_path)
+        """Create a read-only database connection."""
+        return sqlite3.connect(f'file:{self.db_path}?mode=ro', uri=True)
 
     def list_conversations(
         self, since: Optional[str] = None, before: Optional[str] = None, include_empty: bool = False
