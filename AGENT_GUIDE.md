@@ -24,18 +24,35 @@ CCS won't help when:
 - User wants code execution results (CCS only searches conversation text)
 - User is asking about Cursor features rather than past work
 
+## Output Format
+
+CCS supports two output formats via `--format`:
+- `rich` (default): Terminal-styled output with colors and formatting for human viewing
+- `markdown`: Clean markdown output optimized for agent consumption
+
+**Always use `--format markdown` when processing output programmatically.** The rich format includes ANSI escape codes that waste tokens and add noise. Markdown output is clean, structured, and easy to parse.
+
+```bash
+# For your own processing
+ccs search "authentication" --since "3d" --format markdown
+ccs show a1b2c3d4 --format markdown
+
+# When showing output directly to users in a terminal, rich (default) is fine
+ccs list --since "1w"
+```
+
 ## Example Workflow
 
 Here's one way you might use CCS:
 
 ```bash
-# Search for relevant conversations
-ccs search "authentication" --since "3d"
+# Search for relevant conversations (markdown for parsing)
+ccs search "authentication" --since "3d" --format markdown
 
 # Review results, identify a specific conversation
 
 # Show it to understand the content
-ccs show a1b2c3d4
+ccs show a1b2c3d4 --format markdown
 
 # Summarize key points for the user
 
