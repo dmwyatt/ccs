@@ -92,10 +92,24 @@ class MarkdownFormatter(Formatter):
         else:
             created_at = created_at_raw
 
+        # Extract code block data from conversation (needed for counting visible messages)
+        code_block_data = conversation.get('codeBlockData', {})
+
+        # Count visible messages (non-empty text or has code blocks, or all if show_empty)
+        if show_empty:
+            visible_count = len(messages)
+        else:
+            visible_count = 0
+            for msg in messages:
+                has_content = (msg.get('text') or '').strip()
+                has_code_blocks = bool(get_code_blocks_for_message(msg['id'], code_block_data))
+                if has_content or has_code_blocks:
+                    visible_count += 1
+
         lines.append(f"**ID:** {composer_id}\n")
         lines.append(f"**Created:** {created_at}\n")
         lines.append(f"**Status:** {status}\n")
-        lines.append(f"**Messages:** {len(messages)}\n")
+        lines.append(f"**Messages:** {visible_count}\n")
         lines.append("---\n")
 
         # Pre-compute effective model for each message by propagating explicit selections
@@ -111,10 +125,12 @@ class MarkdownFormatter(Formatter):
         # Messages section
         for i, msg in enumerate(messages, 1):
             # Skip empty messages unless show_empty is True
-            # Consider messages with only whitespace as empty
+            # A message is empty if it has no text AND no code blocks
             text = msg.get('text', '')
             has_content = text.strip() if text else False
-            if not has_content and not show_empty:
+            code_blocks = get_code_blocks_for_message(msg['id'], code_block_data)
+            is_empty = not has_content and not code_blocks
+            if is_empty and not show_empty:
                 continue
 
             # Determine speaker/type label
@@ -138,9 +154,8 @@ class MarkdownFormatter(Formatter):
                 lines.append("*(empty message)*\n")
 
             # Code blocks metadata
-            if msg.get('suggested_code_blocks'):
-                count = len(msg['suggested_code_blocks'])
-                lines.append(f"*Code blocks: {count}*\n")
+            if code_blocks:
+                lines.append(f"*Code blocks: {len(code_blocks)}*\n")
 
             lines.append("")  # Extra newline between messages
 
@@ -229,6 +244,20 @@ class RichFormatter(Formatter):
         else:
             created_at = created_at_raw
 
+        # Extract code block data from conversation (needed for counting visible messages)
+        code_block_data = conversation.get('codeBlockData', {})
+
+        # Count visible messages (non-empty text or has code blocks, or all if show_empty)
+        if show_empty:
+            visible_count = len(messages)
+        else:
+            visible_count = 0
+            for msg in messages:
+                has_content = (msg.get('text') or '').strip()
+                has_code_blocks = bool(get_code_blocks_for_message(msg['id'], code_block_data))
+                if has_content or has_code_blocks:
+                    visible_count += 1
+
         title_display = f"[bold cyan]{title}[/bold cyan]"
         if subtitle:
             title_display += f"\n[dim]{subtitle}[/dim]"
@@ -238,15 +267,12 @@ class RichFormatter(Formatter):
             f"[bold]ID:[/bold] {composer_id}\n"
             f"[bold]Created:[/bold] {created_at}\n"
             f"[bold]Status:[/bold] {status}\n"
-            f"[bold]Messages:[/bold] {len(messages)}\n"
+            f"[bold]Messages:[/bold] {visible_count}\n"
             f"[bold]Model:[/bold] {model_name}",
             title="[bold cyan]Conversation[/bold cyan]"
         )
         renderables.append(header_panel)
         renderables.append("")  # Spacing
-
-        # Extract code block data from conversation
-        code_block_data = conversation.get('codeBlockData', {})
 
         # Pre-compute effective model for each message by propagating explicit selections
         # When a user explicitly selects a model, it persists until they select another
