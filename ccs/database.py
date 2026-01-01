@@ -32,13 +32,14 @@ class CursorDatabase:
         return sqlite3.connect(self.db_path)
 
     def list_conversations(
-        self, since: Optional[str] = None, before: Optional[str] = None
+        self, since: Optional[str] = None, before: Optional[str] = None, include_empty: bool = False
     ) -> List[Dict[str, Any]]:
         """List all conversations (composers) in the database.
 
         Args:
             since: Filter conversations created since this time (e.g., "3 days", "2024-01-01")
             before: Filter conversations created before this time
+            include_empty: Include empty conversations (status="none" with 0 messages). Default: False
 
         Returns:
             List of conversation dictionaries with metadata.
@@ -75,6 +76,10 @@ class CursorDatabase:
             })
 
         conn.close()
+
+        # Filter out empty conversations by default (status="none" with 0 messages)
+        if not include_empty:
+            conversations = [c for c in conversations if c['message_count'] > 0]
 
         # Apply time filtering if requested
         if since or before:
@@ -146,7 +151,7 @@ class CursorDatabase:
         return sorted(messages, key=lambda x: x['created'] if x['created'] else '')
 
     def search_conversations(
-        self, query: str, since: Optional[str] = None, before: Optional[str] = None
+        self, query: str, since: Optional[str] = None, before: Optional[str] = None, include_empty: bool = False
     ) -> List[Dict[str, Any]]:
         """Search conversations by text content.
 
@@ -154,11 +159,12 @@ class CursorDatabase:
             query: Search query string.
             since: Filter conversations created since this time
             before: Filter conversations created before this time
+            include_empty: Include empty conversations. Default: False
 
         Returns:
             List of matching conversations.
         """
-        all_conversations = self.list_conversations(since=since, before=before)
+        all_conversations = self.list_conversations(since=since, before=before, include_empty=include_empty)
         query_lower = query.lower()
 
         results = []
@@ -182,16 +188,17 @@ class CursorDatabase:
 
         return results
 
-    def find_by_title(self, title_query: str) -> List[Dict[str, Any]]:
+    def find_by_title(self, title_query: str, include_empty: bool = False) -> List[Dict[str, Any]]:
         """Find conversations by title or subtitle.
 
         Args:
             title_query: Search string for title matching.
+            include_empty: Include empty conversations. Default: False
 
         Returns:
             List of conversations with matching titles.
         """
-        all_conversations = self.list_conversations()
+        all_conversations = self.list_conversations(include_empty=include_empty)
         query_lower = title_query.lower()
 
         return [

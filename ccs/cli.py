@@ -24,14 +24,15 @@ def main():
 
 @main.command()
 @click.option('--all', 'show_all', is_flag=True, help='Show all conversations including archived')
+@click.option('--include-empty', is_flag=True, help='Include empty conversations (0 messages)')
 @click.option('--limit', '-n', type=int, default=20, help='Limit number of results')
 @click.option('--since', help='Show conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Show conversations before this time (same format as --since)')
-def list(show_all: bool, limit: int, since: str, before: str):
+def list(show_all: bool, include_empty: bool, limit: int, since: str, before: str):
     """List all conversations."""
     try:
         db = CursorDatabase()
-        conversations = db.list_conversations(since=since, before=before)
+        conversations = db.list_conversations(since=since, before=before, include_empty=include_empty)
 
         if not show_all:
             conversations = [c for c in conversations if not c['is_archived']]
@@ -71,7 +72,7 @@ def list(show_all: bool, limit: int, since: str, before: str):
         raise click.Abort()
 
 
-def find_conversation(db: CursorDatabase, query: str, since: str = None, before: str = None) -> tuple:
+def find_conversation(db: CursorDatabase, query: str, since: str = None, before: str = None, include_empty: bool = False) -> tuple:
     """Find a conversation by ID or title, optionally filtered by time.
 
     Args:
@@ -79,11 +80,12 @@ def find_conversation(db: CursorDatabase, query: str, since: str = None, before:
         query: Query string (ID or title)
         since: Filter conversations since this time
         before: Filter conversations before this time
+        include_empty: Include empty conversations
 
     Returns:
         tuple: (matching_conv, conversation_id) or (None, None) if not found
     """
-    all_convs = db.list_conversations(since=since, before=before)
+    all_convs = db.list_conversations(since=since, before=before, include_empty=include_empty)
     query_lower = query.lower()
 
     # First try exact ID match
@@ -117,14 +119,15 @@ def find_conversation(db: CursorDatabase, query: str, since: str = None, before:
 @main.command()
 @click.argument('query')
 @click.option('--format', 'output_format', type=click.Choice(['text', 'json']), default='text')
+@click.option('--include-empty', is_flag=True, help='Include empty conversations (0 messages)')
 @click.option('--since', help='Filter to conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Filter to conversations before this time (same format as --since)')
-def show(query: str, output_format: str, since: str, before: str):
+def show(query: str, output_format: str, include_empty: bool, since: str, before: str):
     """Show a specific conversation by ID or title, optionally filtered by time."""
     try:
         db = CursorDatabase()
 
-        matching_conv, conversation_id = find_conversation(db, query, since=since, before=before)
+        matching_conv, conversation_id = find_conversation(db, query, since=since, before=before, include_empty=include_empty)
 
         if not matching_conv:
             console.print(f"[red]Conversation matching '{query}' not found[/red]")
@@ -190,14 +193,15 @@ def show(query: str, output_format: str, since: str, before: str):
 @click.argument('query')
 @click.option('--output', '-o', type=click.Path(), help='Output file path')
 @click.option('--format', 'output_format', type=click.Choice(['markdown', 'json', 'text']), default='markdown')
+@click.option('--include-empty', is_flag=True, help='Include empty conversations (0 messages)')
 @click.option('--since', help='Filter to conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Filter to conversations before this time (same format as --since)')
-def export(query: str, output: str, output_format: str, since: str, before: str):
+def export(query: str, output: str, output_format: str, include_empty: bool, since: str, before: str):
     """Export a conversation to a file by ID or title, optionally filtered by time."""
     try:
         db = CursorDatabase()
 
-        matching_conv, conversation_id = find_conversation(db, query, since=since, before=before)
+        matching_conv, conversation_id = find_conversation(db, query, since=since, before=before, include_empty=include_empty)
 
         if not matching_conv:
             console.print(f"[red]Conversation matching '{query}' not found[/red]")
@@ -274,13 +278,14 @@ def export(query: str, output: str, output_format: str, since: str, before: str)
 
 @main.command()
 @click.argument('query')
+@click.option('--include-empty', is_flag=True, help='Include empty conversations (0 messages)')
 @click.option('--since', help='Search conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Search conversations before this time (same format as --since)')
-def search(query: str, since: str, before: str):
+def search(query: str, include_empty: bool, since: str, before: str):
     """Search conversations by text content."""
     try:
         db = CursorDatabase()
-        results = db.search_conversations(query, since=since, before=before)
+        results = db.search_conversations(query, since=since, before=before, include_empty=include_empty)
 
         if not results:
             console.print(f"[yellow]No conversations found matching '{query}'[/yellow]")
