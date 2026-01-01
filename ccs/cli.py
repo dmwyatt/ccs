@@ -156,8 +156,9 @@ def get_code_blocks_for_message(bubble_id: str, code_block_data: dict) -> list:
 @click.option('--since', help='Filter to conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Filter to conversations before this time (same format as --since)')
 @click.option('--show-code-details', is_flag=True, help='Show detailed code block information')
+@click.option('--show-code-diff', is_flag=True, help='Show code diffs for code blocks')
 @click.option('--show-empty', is_flag=True, help='Show empty assistant messages (streaming artifacts)')
-def show(query: str, output_format: str, include_empty: bool, since: str, before: str, show_code_details: bool, show_empty: bool):
+def show(query: str, output_format: str, include_empty: bool, since: str, before: str, show_code_details: bool, show_code_diff: bool, show_empty: bool):
     """Show a specific conversation by ID or title, optionally filtered by time."""
     try:
         db = CursorDatabase()
@@ -220,8 +221,12 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
 
             if msg['text']:
                 console.print(msg['text'])
-            elif code_blocks:
-                # Empty message with code blocks - show summary
+
+            # Show code blocks (can appear with or without text)
+            if code_blocks:
+                if msg['text']:
+                    console.print()  # Add spacing if we also had text
+
                 for cb in code_blocks:
                     summary = f"[cyan][Code edit: {cb['file']} ({cb['language']}) - {cb['status']}][/cyan]"
                     console.print(summary)
@@ -231,6 +236,32 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
                         console.print(f"  [dim]Diff ID: {cb['diff_id']}[/dim]")
                         if cb['created_at']:
                             console.print(f"  [dim]Created: {cb['created_at']}[/dim]")
+
+                    if show_code_diff and cb['diff_id']:
+                        diff_data = db.get_code_block_diff(conversation_id, cb['diff_id'])
+                        if diff_data:
+                            console.print(f"\n[yellow]Diff for {cb['file']}:[/yellow]")
+                            # Display the diff content from newModelDiffWrtV0
+                            new_diffs = diff_data.get('newModelDiffWrtV0', [])
+                            if new_diffs:
+                                for change in new_diffs:
+                                    start_line = change['original']['startLineNumber']
+                                    end_line = change['original']['endLineNumberExclusive']
+                                    modified_lines = change['modified']
+
+                                    # Show the line range
+                                    if end_line > start_line:
+                                        console.print(f"[dim]Lines {start_line}-{end_line-1}:[/dim]")
+                                    else:
+                                        console.print(f"[dim]Line {start_line}:[/dim]")
+
+                                    # Show the added/modified lines
+                                    for line in modified_lines:
+                                        console.print(f"[green]+ {line}[/green]")
+                                    console.print()
+                            else:
+                                console.print("[dim]No diff changes available[/dim]")
+                            console.print()
 
             # Show code blocks if present in message metadata (different from codeBlockData)
             if msg.get('suggested_code_blocks'):

@@ -206,3 +206,26 @@ class CursorDatabase:
             for conv in all_conversations
             if query_lower in conv['title'].lower() or query_lower in conv['subtitle'].lower()
         ]
+
+    def get_code_block_diff(self, composer_id: str, diff_id: str) -> Optional[Dict[str, Any]]:
+        """Get the code block diff data for a specific diff ID.
+
+        Args:
+            composer_id: The conversation/composer ID.
+            diff_id: The diff ID to fetch.
+
+        Returns:
+            Dictionary with diff data, or None if not found.
+        """
+        conn = self._connect()
+        cursor = conn.cursor()
+
+        cursor.execute(f'SELECT value FROM cursorDiskKV WHERE key = "codeBlockDiff:{composer_id}:{diff_id}"')
+        row = cursor.fetchone()
+
+        conn.close()
+
+        if not row:
+            return None
+
+        return json.loads(row[0])
