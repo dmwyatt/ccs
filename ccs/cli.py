@@ -6,6 +6,7 @@ from rich.table import Table
 from rich.markdown import Markdown
 from rich.panel import Panel
 from rich.padding import Padding
+from rich.console import Group
 from datetime import datetime
 from pathlib import Path
 import json
@@ -246,31 +247,33 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
                 color = "blue"
                 indent = "  "  # Slight indent for assistant messages
 
-            # Build message content
-            message_content = []
+            # Build message content as a list of renderables
+            renderables = []
 
+            # Add markdown-rendered text if present
             if msg['text']:
-                message_content.append(msg['text'])
+                renderables.append(Markdown(msg['text']))
 
             # Show code blocks (can appear with or without text)
             if code_blocks:
                 if msg['text']:
-                    message_content.append("")  # Add spacing
+                    renderables.append("")  # Add spacing
 
+                code_block_info = []
                 for cb in code_blocks:
                     summary = f"[cyan]📝 Code edit: {cb['file']} ({cb['language']}) - {cb['status']}[/cyan]"
-                    message_content.append(summary)
+                    code_block_info.append(summary)
 
                     if show_code_details:
-                        message_content.append(f"  [dim]Full path: {cb['full_path']}[/dim]")
-                        message_content.append(f"  [dim]Diff ID: {cb['diff_id']}[/dim]")
+                        code_block_info.append(f"  [dim]Full path: {cb['full_path']}[/dim]")
+                        code_block_info.append(f"  [dim]Diff ID: {cb['diff_id']}[/dim]")
                         if cb['created_at']:
-                            message_content.append(f"  [dim]Created: {cb['created_at']}[/dim]")
+                            code_block_info.append(f"  [dim]Created: {cb['created_at']}[/dim]")
 
                     if show_code_diff and cb['diff_id']:
                         diff_data = db.get_code_block_diff(conversation_id, cb['diff_id'])
                         if diff_data:
-                            message_content.append(f"\n[yellow]Diff for {cb['file']}:[/yellow]")
+                            code_block_info.append(f"\n[yellow]Diff for {cb['file']}:[/yellow]")
                             # Display the diff content from newModelDiffWrtV0
                             new_diffs = diff_data.get('newModelDiffWrtV0', [])
                             if new_diffs:
@@ -281,32 +284,37 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
 
                                     # Show the line range
                                     if end_line > start_line:
-                                        message_content.append(f"[dim]Lines {start_line}-{end_line-1}:[/dim]")
+                                        code_block_info.append(f"[dim]Lines {start_line}-{end_line-1}:[/dim]")
                                     else:
-                                        message_content.append(f"[dim]Line {start_line}:[/dim]")
+                                        code_block_info.append(f"[dim]Line {start_line}:[/dim]")
 
                                     # Show the added/modified lines
                                     for line in modified_lines:
-                                        message_content.append(f"[green]+ {line}[/green]")
+                                        code_block_info.append(f"[green]+ {line}[/green]")
                             else:
-                                message_content.append("[dim]No diff changes available[/dim]")
+                                code_block_info.append("[dim]No diff changes available[/dim]")
+
+                renderables.append("\n".join(code_block_info))
 
             # Show metadata if present
             if msg.get('suggested_code_blocks'):
-                message_content.append(f"\n[yellow]Suggested code blocks: {len(msg['suggested_code_blocks'])}[/yellow]")
+                renderables.append(f"\n[yellow]Suggested code blocks: {len(msg['suggested_code_blocks'])}[/yellow]")
 
             if msg.get('tool_results'):
-                message_content.append(f"[yellow]Tool results: {len(msg['tool_results'])}[/yellow]")
+                renderables.append(f"[yellow]Tool results: {len(msg['tool_results'])}[/yellow]")
 
-            # Create the chat bubble
-            content_text = "\n".join(message_content) if message_content else "[dim](empty message)[/dim]"
+            # Create the chat bubble content
+            if renderables:
+                content = Group(*renderables)
+            else:
+                content = "[dim](empty message)[/dim]"
             title_text = f"{speaker}"
             if timestamp:
                 title_text += f" • {timestamp}"
 
             # Create the panel
             panel = Panel(
-                content_text,
+                content,
                 title=title_text,
                 title_align="left",
                 border_style=color,
