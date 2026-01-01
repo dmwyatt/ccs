@@ -131,12 +131,17 @@ class CursorDatabase:
         messages = []
         for row in cursor.fetchall():
             data = json.loads(row[1])
+            # Extract per-message model info if available
+            model_info = data.get('modelInfo', {})
+            model_name = model_info.get('modelName') if model_info else None
+
             messages.append({
                 'id': data.get('bubbleId'),
                 'type': 'user' if data.get('type') == 1 else 'assistant',
                 'created': data.get('createdAt'),
                 'text': data.get('text', ''),
                 'rich_text': data.get('richText', ''),
+                'model': model_name,  # Per-message model (None, "default", or specific model name)
                 # Additional context
                 'tool_results': data.get('toolResults', []),
                 'suggested_code_blocks': data.get('suggestedCodeBlocks', []),

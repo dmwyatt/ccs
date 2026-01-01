@@ -1,5 +1,8 @@
 """Command-line interface for ccs (Cursor Conversation Search)."""
 
+import json
+import sqlite3
+
 import click
 from rich.console import Console
 from rich.panel import Panel
@@ -187,6 +190,207 @@ def search(query: str, include_empty: bool, since: str, before: str, output_form
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
         raise click.Abort()
+
+
+@main.command(name='check-db')
+def check_db():
+    """Validate that the Cursor database matches expected schema.
+
+    Checks database structure, key patterns, and JSON field expectations
+    against what ccs requires.
+    """
+    db_path = get_cursor_db_path()
+
+    console.print(Panel.fit(
+        "[bold cyan]Cursor Database Schema Validator[/bold cyan]\n"
+        "Checking if the database matches expected structure..."
+    ))
+    console.print()
+
+    issues = []
+    warnings = []
+
+    # 1. Check database exists
+    console.print("[bold]1. Database Location[/bold]")
+    console.print(f"   Path: {db_path}")
+    if not db_path.exists():
+        console.print("   [red]✗ Database not found[/red]")
+        issues.append("Database file does not exist")
+        _print_check_db_summary(issues, warnings)
+        return
+    console.print(f"   [green]✓ Database exists[/green] ({db_path.stat().st_size / 1024:.2f} KB)")
+    console.print()
+
+    # 2. Check database connection and table structure
+    console.print("[bold]2. Database Structure[/bold]")
+    try:
+        conn = sqlite3.connect(f'file:{db_path}?mode=ro', uri=True)
+        cursor = conn.cursor()
+        console.print("   [green]✓ Can open read-only connection[/green]")
+
+        # Check table exists
+        cursor.execute("SELECT name FROM sqlite_master WHERE type='table' AND name='cursorDiskKV'")
+        if not cursor.fetchone():
+            console.print("   [red]✗ Table 'cursorDiskKV' not found[/red]")
+            issues.append("Required table 'cursorDiskKV' not found")
+            conn.close()
+            _print_check_db_summary(issues, warnings)
+            return
+        console.print("   [green]✓ Table 'cursorDiskKV' exists[/green]")
+
+        # Check columns
+        cursor.execute("PRAGMA table_info(cursorDiskKV)")
+        columns = {row[1]: row[2] for row in cursor.fetchall()}
+        expected_cols = ['key', 'value']
+        for col in expected_cols:
+            if col in columns:
+                console.print(f"   [green]✓ Column '{col}' exists[/green] (type: {columns[col]})")
+            else:
+                console.print(f"   [red]✗ Column '{col}' not found[/red]")
+                issues.append(f"Required column '{col}' not found")
+        console.print()
+
+        # 3. Check key patterns
+        console.print("[bold]3. Key Patterns[/bold]")
+        key_patterns = {
+            'composerData:%': ('Conversation metadata', True),
+            'bubbleId:%': ('Messages', True),
+            'codeBlockDiff:%': ('Code diffs', False),  # Optional - may not exist if no diffs
+        }
+
+        for pattern, (description, required) in key_patterns.items():
+            cursor.execute(f"SELECT COUNT(*) FROM cursorDiskKV WHERE key LIKE ?", (pattern,))
+            count = cursor.fetchone()[0]
+            if count > 0:
+                console.print(f"   [green]✓ {description}[/green] ({count} records matching '{pattern}')")
+            elif required:
+                console.print(f"   [red]✗ {description}[/red] (no records matching '{pattern}')")
+                issues.append(f"No records found for required pattern '{pattern}'")
+            else:
+                console.print(f"   [yellow]○ {description}[/yellow] (no records matching '{pattern}' - optional)")
+        console.print()
+
+        # 4. Validate JSON schema for sample records
+        console.print("[bold]4. JSON Schema Validation[/bold]")
+
+        # Check composerData schema
+        console.print("   [bold]composerData:[/bold]")
+        cursor.execute("SELECT key, value FROM cursorDiskKV WHERE key LIKE 'composerData:%' LIMIT 5")
+        composer_rows = cursor.fetchall()
+        composer_fields = {
+            'required': ['composerId'],
+            'expected': ['createdAt', 'name', 'status', 'text'],
+            'optional': ['subtitle', 'modelConfig', 'isArchived', 'totalLinesAdded', 'totalLinesRemoved', 'codeBlockData']
+        }
+        if composer_rows:
+            _validate_json_schema(composer_rows, composer_fields, console, warnings, "composerData")
+        else:
+            console.print("      [yellow]No records to validate[/yellow]")
+
+        # Check bubbleId schema
+        console.print("   [bold]bubbleId:[/bold]")
+        cursor.execute("SELECT key, value FROM cursorDiskKV WHERE key LIKE 'bubbleId:%' LIMIT 5")
+        bubble_rows = cursor.fetchall()
+        bubble_fields = {
+            'required': ['bubbleId', 'type'],
+            'expected': ['createdAt', 'text'],
+            'optional': ['richText', 'toolResults', 'suggestedCodeBlocks', 'images', 'capabilities', 'context', 'modelInfo']
+        }
+        if bubble_rows:
+            _validate_json_schema(bubble_rows, bubble_fields, console, warnings, "bubbleId")
+        else:
+            console.print("      [yellow]No records to validate[/yellow]")
+
+        # Check codeBlockDiff schema
+        console.print("   [bold]codeBlockDiff:[/bold]")
+        cursor.execute("SELECT key, value FROM cursorDiskKV WHERE key LIKE 'codeBlockDiff:%' LIMIT 5")
+        diff_rows = cursor.fetchall()
+        diff_fields = {
+            'required': [],
+            'expected': ['originalText', 'modifiedText'],
+            'optional': []
+        }
+        if diff_rows:
+            _validate_json_schema(diff_rows, diff_fields, console, warnings, "codeBlockDiff")
+        else:
+            console.print("      [dim]No records to validate (no code diffs)[/dim]")
+
+        conn.close()
+        console.print()
+
+    except sqlite3.Error as e:
+        console.print(f"   [red]✗ Database error: {e}[/red]")
+        issues.append(f"Database error: {e}")
+
+    _print_check_db_summary(issues, warnings)
+
+
+def _validate_json_schema(rows: list, field_spec: dict, console: Console, warnings: list, record_type: str):
+    """Validate JSON records against expected schema."""
+    found_fields = set()
+    missing_required = set()
+    missing_expected = set()
+
+    for key, value in rows:
+        try:
+            data = json.loads(value)
+            found_fields.update(data.keys())
+
+            for field in field_spec['required']:
+                if field not in data:
+                    missing_required.add(field)
+            for field in field_spec['expected']:
+                if field not in data:
+                    missing_expected.add(field)
+        except json.JSONDecodeError:
+            warnings.append(f"Invalid JSON in {key}")
+
+    # Report required fields
+    for field in field_spec['required']:
+        if field in missing_required:
+            console.print(f"      [red]✗ Missing required field '{field}'[/red]")
+            warnings.append(f"{record_type}: Missing required field '{field}'")
+        else:
+            console.print(f"      [green]✓ Required field '{field}'[/green]")
+
+    # Report expected fields
+    for field in field_spec['expected']:
+        if field in missing_expected:
+            console.print(f"      [yellow]○ Missing expected field '{field}' in some records[/yellow]")
+        else:
+            console.print(f"      [green]✓ Expected field '{field}'[/green]")
+
+    # Report new/unknown fields
+    all_known = set(field_spec['required'] + field_spec['expected'] + field_spec['optional'])
+    unknown_fields = found_fields - all_known
+    if unknown_fields:
+        console.print(f"      [cyan]ℹ New fields found: {', '.join(sorted(unknown_fields))}[/cyan]")
+
+
+def _print_check_db_summary(issues: list, warnings: list):
+    """Print summary of database check."""
+    console.print()
+    if issues:
+        console.print(Panel.fit(
+            "[red bold]Schema validation failed![/red bold]\n\n" +
+            "[red]Issues:[/red]\n" +
+            "\n".join(f"  • {issue}" for issue in issues) +
+            ("\n\n[yellow]Warnings:[/yellow]\n" + "\n".join(f"  • {w}" for w in warnings) if warnings else ""),
+            title="[red]Result[/red]"
+        ))
+    elif warnings:
+        console.print(Panel.fit(
+            "[yellow bold]Schema validation passed with warnings[/yellow bold]\n\n" +
+            "[yellow]Warnings:[/yellow]\n" +
+            "\n".join(f"  • {w}" for w in warnings),
+            title="[yellow]Result[/yellow]"
+        ))
+    else:
+        console.print(Panel.fit(
+            "[green bold]Schema validation passed![/green bold]\n\n"
+            "The Cursor database structure matches what ccs expects.",
+            title="[green]Result[/green]"
+        ))
 
 
 @main.command()

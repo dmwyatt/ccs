@@ -9,7 +9,7 @@ from rich.markdown import Markdown
 from rich.padding import Padding
 from rich.console import Group
 
-from .utils import get_code_blocks_for_message, normalize_model_name, format_timestamp, truncate_text
+from .utils import get_code_blocks_for_message, normalize_model_name, format_timestamp, truncate_text, get_model_style
 
 
 class Formatter(ABC):
@@ -98,6 +98,16 @@ class MarkdownFormatter(Formatter):
         lines.append(f"**Messages:** {len(messages)}\n")
         lines.append("---\n")
 
+        # Pre-compute effective model for each message by propagating explicit selections
+        # Before any explicit selection, we don't know the model so use None
+        current_model = None
+        effective_models = []
+        for msg in messages:
+            msg_model = msg.get('model')
+            if msg_model and msg_model != 'default':
+                current_model = msg_model
+            effective_models.append(current_model)
+
         # Messages section
         for i, msg in enumerate(messages, 1):
             # Skip empty messages unless show_empty is True
@@ -107,9 +117,18 @@ class MarkdownFormatter(Formatter):
             if not has_content and not show_empty:
                 continue
 
-            msg_type = msg['type'].upper()
+            # Determine speaker/type label
+            if msg['type'] == 'user':
+                speaker = "USER"
+            else:
+                effective_model = effective_models[i - 1]
+                if effective_model:
+                    speaker = normalize_model_name(effective_model)
+                else:
+                    speaker = "ASSISTANT"  # Unknown model before first explicit selection
+
             created = msg.get('created', '')
-            lines.append(f"## {i}. {msg_type} - {created}\n")
+            lines.append(f"## {i}. {speaker} - {created}\n")
 
             # Message text
             text = msg.get('text', '')
@@ -229,8 +248,17 @@ class RichFormatter(Formatter):
         # Extract code block data from conversation
         code_block_data = conversation.get('codeBlockData', {})
 
-        # Normalize model name for assistant label
-        model_display_name = normalize_model_name(model_name)
+        # Pre-compute effective model for each message by propagating explicit selections
+        # When a user explicitly selects a model, it persists until they select another
+        # Before any explicit selection, we don't know the model so use None
+        current_model = None
+        effective_models = []
+        for msg in messages:
+            msg_model = msg.get('model')
+            if msg_model and msg_model != 'default':
+                # Explicit selection - update current model
+                current_model = msg_model
+            effective_models.append(current_model)
 
         # Process messages
         for i, msg in enumerate(messages, 1):
@@ -251,10 +279,20 @@ class RichFormatter(Formatter):
             # Determine speaker label and styling
             if msg['type'] == 'user':
                 speaker = "You"
-                color = "green"
+                border_color = "green"
             else:
-                speaker = model_display_name
-                color = "blue"
+                # Use the pre-computed effective model (handles propagation of explicit selections)
+                effective_model = effective_models[i - 1]
+                style = get_model_style(effective_model)
+                model_color = style['color']
+                icon = style['icon']
+                if effective_model:
+                    model_name_display = normalize_model_name(effective_model)
+                else:
+                    model_name_display = "Assistant"
+                # Apply color only to the model name, not the whole border
+                speaker = f"[{model_color}]{icon} {model_name_display}[/{model_color}]"
+                border_color = "blue"
 
             # Build message content as a list of renderables
             message_renderables = []
@@ -327,17 +365,18 @@ class RichFormatter(Formatter):
                 content,
                 title=title_text,
                 title_align="left",
-                border_style=color,
+                border_style=border_color,
                 padding=(0, 1),
             )
 
-            # For assistant messages, add left padding to create indent effect
+            # Add padding to create chat bubble effect
+            # User messages: pad right, Assistant messages: pad left
+            bubble_indent = 4
             if msg['type'] == 'user':
-                renderables.append(panel)
+                padded_panel = Padding(panel, (0, bubble_indent, 0, 0))  # (top, right, bottom, left)
             else:
-                # Assistant message - wrap in padding for indent
-                padded_panel = Padding(panel, (0, 0, 0, 2))  # (top, right, bottom, left)
-                renderables.append(padded_panel)
+                padded_panel = Padding(panel, (0, 0, 0, bubble_indent))
+            renderables.append(padded_panel)
 
         return Group(*renderables)
 

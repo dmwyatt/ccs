@@ -88,6 +88,52 @@ def format_timestamp(created: str) -> str:
         return created[:10] if len(created) >= 10 else created
 
 
+def get_model_style(model_name: str | None) -> dict:
+    """Get styling information for a model based on its family/provider.
+
+    Args:
+        model_name: Model name (can be None for unknown models)
+
+    Returns:
+        Dict with 'color' (Rich color string) and 'icon' (Unicode symbol)
+    """
+    if not model_name:
+        return {'color': '#888888', 'icon': '○'}  # Medium gray, visible on dark backgrounds
+
+    name_lower = model_name.lower()
+
+    # Anthropic Claude models
+    if 'claude' in name_lower:
+        return {'color': '#D97706', 'icon': '◉'}  # Amber/orange
+
+    # OpenAI GPT models
+    if 'gpt' in name_lower or 'openai' in name_lower or 'o1' in name_lower or 'o3' in name_lower:
+        return {'color': '#10A37F', 'icon': '◆'}  # OpenAI green
+
+    # Google Gemini models
+    if 'gemini' in name_lower:
+        return {'color': '#4285F4', 'icon': '✦'}  # Google blue
+
+    # Cursor models
+    if 'cursor' in name_lower:
+        return {'color': 'cyan', 'icon': '▸'}
+
+    # Meta Llama models
+    if 'llama' in name_lower:
+        return {'color': '#58A6FF', 'icon': '◈'}  # Lighter blue for dark backgrounds
+
+    # Mistral models
+    if 'mistral' in name_lower:
+        return {'color': '#FF7000', 'icon': '◇'}  # Mistral orange
+
+    # DeepSeek models
+    if 'deepseek' in name_lower:
+        return {'color': '#6CB6FF', 'icon': '◎'}  # Lighter blue for dark backgrounds
+
+    # Default/unknown
+    return {'color': 'blue', 'icon': '●'}
+
+
 def truncate_text(text: str, max_length: int, suffix: str = "...") -> str:
     """Truncate text to maximum length with suffix.
 
