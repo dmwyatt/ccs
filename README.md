@@ -2,7 +2,7 @@
 
 A Python CLI tool to read and export Cursor agent conversations from the local SQLite database.
 
-## 🤖 For AI Agents
+## For AI Agents
 
 **[AGENT_GUIDE.md](AGENT_GUIDE.md)** - Integration guide for AI agents (Claude, Cursor, etc.)
 
