@@ -8,6 +8,12 @@ A Python CLI tool to read and export Cursor agent conversations from the local S
 uv tool install git+https://github.com/dmwyatt/ccs.git
 ```
 
+## Updating
+
+```bash
+uv tool upgrade ccs
+```
+
 ## Usage
 
 ```bash
