@@ -64,40 +64,46 @@ class CursorDatabase:
         conn = self._connect()
         cursor = conn.cursor()
 
-        # Use CTE to batch count messages, then JOIN to get only non-empty conversations
-        # This avoids N+1 queries (one COUNT per conversation)
-        if include_empty:
-            # LEFT JOIN to include conversations with no messages
-            cursor.execute('''
-                WITH bubble_counts AS (
-                    SELECT
-                        SUBSTR(key, 10, INSTR(SUBSTR(key, 10), ':') - 1) as composer_id,
-                        COUNT(*) as msg_count
-                    FROM cursorDiskKV
-                    WHERE key LIKE 'bubbleId:%'
-                    GROUP BY composer_id
-                )
-                SELECT c.key, c.value, COALESCE(b.msg_count, 0) as msg_count
-                FROM cursorDiskKV c
-                LEFT JOIN bubble_counts b ON SUBSTR(c.key, 14) = b.composer_id
-                WHERE c.key LIKE 'composerData:%' AND c.value IS NOT NULL
-            ''')
-        else:
-            # INNER JOIN to only get conversations with messages
-            cursor.execute('''
-                WITH bubble_counts AS (
-                    SELECT
-                        SUBSTR(key, 10, INSTR(SUBSTR(key, 10), ':') - 1) as composer_id,
-                        COUNT(*) as msg_count
-                    FROM cursorDiskKV
-                    WHERE key LIKE 'bubbleId:%'
-                    GROUP BY composer_id
-                )
-                SELECT c.key, c.value, b.msg_count
-                FROM cursorDiskKV c
-                JOIN bubble_counts b ON SUBSTR(c.key, 14) = b.composer_id
-                WHERE c.key LIKE 'composerData:%' AND c.value IS NOT NULL
-            ''')
+        # Count non-empty messages per conversation:
+        # - Messages with non-empty text, OR
+        # - Messages that have associated code blocks
+        # Uses json_tree to efficiently find bubbleId values in nested codeBlockData
+        join_type = "LEFT JOIN" if include_empty else "JOIN"
+        cursor.execute(f'''
+            WITH
+            messages AS (
+                SELECT
+                    SUBSTR(key, 10, INSTR(SUBSTR(key, 10), ':') - 1) as composer_id,
+                    json_extract(value, '$.bubbleId') as bubble_id,
+                    CASE WHEN TRIM(COALESCE(json_extract(value, '$.text'), '')) != ''
+                         THEN 1 ELSE 0 END as has_text
+                FROM cursorDiskKV
+                WHERE key LIKE 'bubbleId:%'
+            ),
+            code_block_bubbles AS (
+                SELECT DISTINCT
+                    SUBSTR(c.key, 14) as composer_id,
+                    jt.value as bubble_id
+                FROM cursorDiskKV c,
+                    json_tree(c.value, '$.codeBlockData') as jt
+                WHERE c.key LIKE 'composerData:%'
+                  AND jt.key = 'bubbleId'
+            ),
+            non_empty_counts AS (
+                SELECT
+                    m.composer_id,
+                    COUNT(*) as msg_count
+                FROM messages m
+                LEFT JOIN code_block_bubbles cb
+                    ON m.composer_id = cb.composer_id AND m.bubble_id = cb.bubble_id
+                WHERE m.has_text = 1 OR cb.bubble_id IS NOT NULL
+                GROUP BY m.composer_id
+            )
+            SELECT c.key, c.value, COALESCE(n.msg_count, 0) as msg_count
+            FROM cursorDiskKV c
+            {join_type} non_empty_counts n ON SUBSTR(c.key, 14) = n.composer_id
+            WHERE c.key LIKE 'composerData:%' AND c.value IS NOT NULL
+        ''')
 
         conversations = []
         for row in cursor.fetchall():
