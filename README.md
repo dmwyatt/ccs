@@ -64,7 +64,7 @@ The CLI is **title-focused** for better usability:
 - **List** - View all conversations with titles, subtitles, and metadata
 - **Show** - Display conversations by title or ID
 - **Export** - Export conversations by title or ID to markdown, JSON, or text
-- **Search** - Search conversations by title, subtitle, or message content
+- **Search** - Search conversations by keywords or exact phrases (AND logic)
 - **Info** - Display statistics about stored conversations
 
 ### Title-Based Access
@@ -103,6 +103,26 @@ Filter conversations by when they were created using human-friendly expressions:
 - `YYYY-MM-DD` (e.g., "2026-01-01")
 - `YYYY-MM-DD HH:MM` (e.g., "2026-01-01 14:30")
 - `MM/DD/YYYY`
+
+### Search Syntax
+
+Search uses keyword matching with AND logic:
+
+```bash
+# Multiple keywords - all must appear somewhere in the conversation
+ccs search "refactor tests auth"
+
+# Quoted phrases for exact matching
+ccs search '"error handling"'
+
+# Mix keywords and phrases
+ccs search '"user auth" login refactor'
+
+# Include code diffs in search
+ccs search "database" --search-diffs
+```
+
+Search is case-insensitive and checks titles, subtitles, and message content.
 
 ## Next Steps
 

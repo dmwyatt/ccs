@@ -60,6 +60,27 @@ ccs show a1b2c3d4 --format markdown
 ccs export "oauth setup" --format markdown --output notes.md
 ```
 
+## Search Syntax
+
+The `search` command uses keyword-based matching with AND logic:
+
+- **Multiple words** are treated as separate keywords—all must appear somewhere in the conversation
+- **Quoted phrases** match exactly: `"user authentication"` finds that exact phrase
+- **Mixing both** works: `"error handling" refactor` finds conversations with the exact phrase "error handling" AND the word "refactor"
+
+```bash
+# Find conversations mentioning both "refactor" and "tests"
+ccs search "refactor tests" --format markdown
+
+# Find exact phrase "user auth" plus keyword "login"
+ccs search '"user auth" login' --format markdown
+
+# Single keyword still works
+ccs search "authentication" --format markdown
+```
+
+Search is case-insensitive. Keywords/phrases can appear anywhere in the conversation (title, messages, or code diffs with `--search-diffs`).
+
 ## Time Filtering
 
 Time filters help narrow results. Map user time references:

@@ -60,7 +60,7 @@ Core database interface with these classes/functions:
   - `list_conversations()` - Get all conversations with time filtering
   - `get_conversation(id)` - Get specific conversation metadata
   - `get_messages(id)` - Get messages for a conversation
-  - `search_conversations(query)` - Search conversations
+  - `search_conversations(query)` - Search conversations (keyword AND logic, supports quoted phrases)
 
 ### `ccs/cli.py`
 
