@@ -2,6 +2,7 @@
 
 import json
 import os
+import re
 import sqlite3
 import sys
 from pathlib import Path
@@ -9,6 +10,38 @@ from datetime import datetime
 from typing import List, Dict, Any, Optional
 
 from .datetime_utils import filter_by_time_range
+
+
+def parse_search_query(query: str) -> List[str]:
+    """Parse a search query into individual terms.
+
+    Supports:
+    - Quoted phrases: "exact phrase" stays together
+    - Individual keywords: unquoted words are split on whitespace
+
+    Args:
+        query: The search query string.
+
+    Returns:
+        List of search terms (phrases and/or keywords).
+
+    Examples:
+        >>> parse_search_query('refactor tests user')
+        ['refactor', 'tests', 'user']
+        >>> parse_search_query('"exact phrase" keyword')
+        ['exact phrase', 'keyword']
+        >>> parse_search_query('"hello world" foo "bar baz"')
+        ['hello world', 'foo', 'bar baz']
+    """
+    terms = []
+    # Match quoted strings or non-whitespace sequences
+    pattern = r'"([^"]+)"|(\S+)'
+    for match in re.finditer(pattern, query):
+        # Group 1 is quoted content (without quotes), group 2 is unquoted word
+        term = match.group(1) if match.group(1) is not None else match.group(2)
+        if term:  # Skip empty strings
+            terms.append(term)
+    return terms
 
 
 def get_cursor_db_path() -> Path:
@@ -222,8 +255,17 @@ class CursorDatabase:
     ) -> List[Dict[str, Any]]:
         """Search conversations by text content.
 
+        Search supports multiple keywords and quoted phrases:
+        - Multiple words are treated as separate keywords (AND logic)
+        - All keywords must appear somewhere in the conversation
+        - Use quotes for exact phrase matching: "exact phrase"
+
+        Examples:
+            "refactor tests" - finds conversations containing both "refactor" AND "tests"
+            '"user auth" login' - finds conversations with exact phrase "user auth" AND "login"
+
         Args:
-            query: Search query string.
+            query: Search query string (keywords and/or quoted phrases).
             since: Filter conversations created since this time
             before: Filter conversations created before this time
             include_empty: Include empty conversations. Default: False
@@ -232,12 +274,50 @@ class CursorDatabase:
         Returns:
             List of matching conversations.
         """
+        terms = parse_search_query(query)
+        if not terms:
+            return []
+
         conn = self._connect()
         cursor = conn.cursor()
 
+        # Find IDs matching each term, then intersect
+        matching_ids: Optional[set] = None
+        for term in terms:
+            term_ids = self._find_ids_for_term(cursor, term, search_diffs)
+            if matching_ids is None:
+                matching_ids = term_ids
+            else:
+                matching_ids &= term_ids
+            # Early exit if no matches
+            if not matching_ids:
+                conn.close()
+                return []
+
+        conn.close()
+
+        # Get full conversation data for matching IDs and apply filters
+        all_conversations = self.list_conversations(since=since, before=before, include_empty=include_empty)
+        results = [conv for conv in all_conversations if conv['id'] in matching_ids]
+
+        return results
+
+    def _find_ids_for_term(
+        self, cursor: sqlite3.Cursor, term: str, search_diffs: bool
+    ) -> set:
+        """Find conversation IDs matching a single search term.
+
+        Args:
+            cursor: Database cursor.
+            term: Single search term (keyword or phrase).
+            search_diffs: Also search in code diffs.
+
+        Returns:
+            Set of composer IDs matching the term.
+        """
         # Escape % and _ for LIKE pattern, then wrap with %
-        query_escaped = query.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
-        like_pattern = f'%{query_escaped}%'
+        term_escaped = term.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')
+        like_pattern = f'%{term_escaped}%'
 
         # Find matching composer IDs using SQL with JSON operators
         # Search in metadata: title (name), subtitle, and preview (text)
@@ -266,13 +346,7 @@ class CursorDatabase:
         if search_diffs:
             matching_ids.update(self._search_code_diffs_sql(cursor, like_pattern))
 
-        conn.close()
-
-        # Get full conversation data for matching IDs and apply filters
-        all_conversations = self.list_conversations(since=since, before=before, include_empty=include_empty)
-        results = [conv for conv in all_conversations if conv['id'] in matching_ids]
-
-        return results
+        return matching_ids
 
     def _search_code_diffs_sql(self, cursor: sqlite3.Cursor, like_pattern: str) -> set:
         """Search code diffs using SQL.

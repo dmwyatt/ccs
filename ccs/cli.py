@@ -168,7 +168,17 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
 @click.option('--format', 'output_format', type=click.Choice(['rich', 'markdown']), default='rich')
 @click.option('--search-diffs', is_flag=True, help='Also search in code diffs (file paths and diff content)')
 def search(query: str, include_empty: bool, since: str, before: str, output_format: str, search_diffs: bool):
-    """Search conversations by text content."""
+    """Search conversations by text content.
+
+    Multiple words are treated as separate keywords (AND logic) - all must match.
+    Use quotes for exact phrases: "exact phrase"
+
+    \b
+    Examples:
+      ccs search "refactor tests"        # Both words must appear
+      ccs search '"user auth" login'     # Exact phrase + keyword
+      ccs search authentication          # Single keyword
+    """
     try:
         db = CursorDatabase()
         results = db.search_conversations(query, since=since, before=before, include_empty=include_empty, search_diffs=search_diffs)
