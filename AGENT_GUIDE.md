@@ -79,6 +79,19 @@ ccs search '"user auth" login' --format markdown
 ccs search "authentication" --format markdown
 ```
 
+**Pagination:** Both `list` and `search` return 20 results per page by default. Output includes total count and page info:
+```
+Showing 1-20 of 87 results (page 1/5)
+```
+
+Use `--page` (or `-p`) to navigate and `--per-page` (or `-n`) to adjust page size:
+```bash
+ccs search "auth" --page 2 --format markdown        # Get page 2
+ccs search "auth" -n 50 --format markdown           # 50 results per page
+```
+
+**Archived conversations** are excluded by default. Use `--all` to include them.
+
 Search is case-insensitive. Keywords/phrases can appear anywhere in the conversation (title, messages, or code diffs with `--search-diffs`).
 
 ## Time Filtering

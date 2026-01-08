@@ -20,9 +20,10 @@ uv tool upgrade ccs
 # Show database info and statistics
 ccs info
 
-# List conversations (most recent first)
+# List conversations (most recent first, paginated)
 ccs list
-ccs list --limit 10 --since "3d"
+ccs list --per-page 10 --since "3d"
+ccs list --page 2  # Get the next page
 
 # Show a conversation by title (fuzzy matching) or ID
 ccs show "application lister"

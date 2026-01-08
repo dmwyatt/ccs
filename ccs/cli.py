@@ -24,11 +24,12 @@ def main():
 @main.command()
 @click.option('--all', 'show_all', is_flag=True, help='Show all conversations including archived')
 @click.option('--include-empty', is_flag=True, help='Include empty conversations (0 messages)')
-@click.option('--limit', '-n', type=int, default=20, help='Limit number of results')
+@click.option('--per-page', '-n', type=int, default=20, help='Results per page')
+@click.option('--page', '-p', type=int, default=1, help='Page number (starts at 1)')
 @click.option('--since', help='Show conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Show conversations before this time (same format as --since)')
 @click.option('--format', 'output_format', type=click.Choice(['rich', 'markdown']), default='rich')
-def list(show_all: bool, include_empty: bool, limit: int, since: str, before: str, output_format: str):
+def list(show_all: bool, include_empty: bool, per_page: int, page: int, since: str, before: str, output_format: str):
     """List all conversations."""
     try:
         db = CursorDatabase()
@@ -37,22 +38,31 @@ def list(show_all: bool, include_empty: bool, limit: int, since: str, before: st
         if not show_all:
             conversations = [c for c in conversations if not c['is_archived']]
 
-        if limit:
-            conversations = conversations[:limit]
+        total = len(conversations)
+        start = (page - 1) * per_page
+        end = start + per_page
+        conversations = conversations[start:end]
 
         if not conversations:
             console.print("[yellow]No conversations found.[/yellow]")
             return
+
+        # Pagination info
+        showing_start = start + 1
+        showing_end = min(end, total)
+        total_pages = (total + per_page - 1) // per_page
 
         # Use formatter based on output format
         if output_format == 'rich':
             formatter = RichFormatter()
             table = formatter.format_conversation_list(conversations)
             console.print(table)
+            console.print(f"[dim]Showing {showing_start}-{showing_end} of {total} conversations (page {page}/{total_pages})[/dim]")
         else:  # markdown
             formatter = MarkdownFormatter()
             output = formatter.format_conversation_list(conversations)
             print(output)
+            print(f"\n_Showing {showing_start}-{showing_end} of {total} conversations (page {page}/{total_pages})_")
 
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
@@ -162,12 +172,15 @@ def show(query: str, output_format: str, include_empty: bool, since: str, before
 
 @main.command()
 @click.argument('query')
+@click.option('--all', 'show_all', is_flag=True, help='Show all conversations including archived')
 @click.option('--include-empty', is_flag=True, help='Include empty conversations (0 messages)')
+@click.option('--per-page', '-n', type=int, default=20, help='Results per page')
+@click.option('--page', '-p', type=int, default=1, help='Page number (starts at 1)')
 @click.option('--since', help='Search conversations since this time. Relative: "3d", "15m", "4h", "1w". Absolute: "2024-01-01"')
 @click.option('--before', help='Search conversations before this time (same format as --since)')
 @click.option('--format', 'output_format', type=click.Choice(['rich', 'markdown']), default='rich')
 @click.option('--search-diffs', is_flag=True, help='Also search in code diffs (file paths and diff content)')
-def search(query: str, include_empty: bool, since: str, before: str, output_format: str, search_diffs: bool):
+def search(query: str, show_all: bool, include_empty: bool, per_page: int, page: int, since: str, before: str, output_format: str, search_diffs: bool):
     """Search conversations by text content.
 
     Multiple words are treated as separate keywords (AND logic) - all must match.
@@ -183,23 +196,36 @@ def search(query: str, include_empty: bool, since: str, before: str, output_form
         db = CursorDatabase()
         results = db.search_conversations(query, since=since, before=before, include_empty=include_empty, search_diffs=search_diffs)
 
+        if not show_all:
+            results = [r for r in results if not r['is_archived']]
+
+        total = len(results)
+        start = (page - 1) * per_page
+        end = start + per_page
+        results = results[start:end]
+
         if not results:
             console.print(f"[yellow]No conversations found matching '{query}'[/yellow]")
             return
+
+        # Pagination info
+        showing_start = start + 1
+        showing_end = min(end, total)
+        total_pages = (total + per_page - 1) // per_page
 
         # Use formatter based on output format
         if output_format == 'rich':
             formatter = RichFormatter()
             table = formatter.format_conversation_list(results)
-            # Customize title for search context
-            table.title = f"Search Results for '{query}' ({len(results)} found)"
+            table.title = f"Search Results for '{query}'"
             console.print(table)
+            console.print(f"[dim]Showing {showing_start}-{showing_end} of {total} results (page {page}/{total_pages})[/dim]")
         else:  # markdown
             formatter = MarkdownFormatter()
             output = formatter.format_conversation_list(results)
-            # Prepend search query to output
             output = f"# Search Results for '{query}'\n\n" + output
             print(output)
+            print(f"\n_Showing {showing_start}-{showing_end} of {total} results (page {page}/{total_pages})_")
 
     except FileNotFoundError as e:
         console.print(f"[red]Error: {e}[/red]")
