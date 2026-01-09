@@ -131,15 +131,9 @@ ccs search "database" --search-diffs
 
 Search is case-insensitive and checks titles, subtitles, and message content.
 
-## Next Steps
+## Roadmap
 
-Potential improvements:
-1. Handle and display rich text formatting properly
-2. Extract and display code blocks in a readable format
-3. Support exporting to HTML format
-4. Add filtering options (by date, status, model)
-5. Add conversation deletion/archiving capabilities
-6. Support multiple Cursor profiles
+See [ROADMAP.md](ROADMAP.md) for feature ideas and potential enhancements.
 
 ## Development
 
