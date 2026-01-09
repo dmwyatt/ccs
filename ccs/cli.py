@@ -15,6 +15,77 @@ from .stats import ConversationStats
 console = Console()
 
 
+def render_bar(value: int, max_value: int, width: int = 30) -> str:
+    """Render a horizontal bar using Unicode block characters.
+
+    Args:
+        value: The value to represent
+        max_value: Maximum value (determines scale)
+        width: Maximum bar width in characters
+
+    Returns:
+        String of block characters representing the bar
+    """
+    if max_value == 0:
+        return ""
+
+    # Unicode block characters for smooth rendering
+    blocks = " ▏▎▍▌▋▊▉█"
+
+    ratio = value / max_value
+    full_width = ratio * width
+
+    full_blocks = int(full_width)
+    remainder = full_width - full_blocks
+
+    # Select partial block character
+    partial_idx = int(remainder * 8)
+    partial = blocks[partial_idx] if partial_idx > 0 else ""
+
+    return "█" * full_blocks + partial
+
+
+def render_bar_chart(
+    data: list[tuple[str, int]],
+    title: str = "",
+    width: int = 30,
+    show_values: bool = True,
+    value_suffix: str = "",
+) -> str:
+    """Render a horizontal bar chart.
+
+    Args:
+        data: List of (label, value) tuples
+        title: Optional chart title
+        width: Bar width in characters
+        show_values: Whether to show numeric values
+        value_suffix: Suffix for values (e.g., '%')
+
+    Returns:
+        Multi-line string containing the chart
+    """
+    if not data:
+        return ""
+
+    max_value = max(v for _, v in data) if data else 0
+    max_label_len = max(len(label) for label, _ in data) if data else 0
+
+    lines = []
+    if title:
+        lines.append(f"[bold]{title}[/bold]")
+        lines.append("")
+
+    for label, value in data:
+        bar = render_bar(value, max_value, width)
+        padded_label = label.ljust(max_label_len)
+        if show_values:
+            lines.append(f"{padded_label} │{bar} {value}{value_suffix}")
+        else:
+            lines.append(f"{padded_label} │{bar}")
+
+    return "\n".join(lines)
+
+
 @click.group()
 @click.version_option()
 def main():
@@ -548,6 +619,12 @@ def _output_overall_stats(stats_calc: ConversationStats, output_format: str):
 
         console.print(dist_table)
 
+        # Distribution bar chart
+        console.print()
+        dist_data = [(bucket, count) for bucket, count in result.distribution.items()]
+        chart = render_bar_chart(dist_data, title="Distribution Chart", width=25)
+        console.print(chart)
+
         # Top conversations
         if top_convs:
             console.print()
@@ -625,6 +702,24 @@ def _output_weekly_stats(stats_calc: ConversationStats, num_weeks: int, output_f
             )
 
         console.print(table)
+
+        # Weekly trend charts (reversed for chronological order, oldest at top)
+        console.print()
+        reversed_results = results[::-1]
+        convs_data = [
+            (r.label.split(" (")[0], r.count)
+            for r in reversed_results
+        ]
+        chart = render_bar_chart(convs_data, title="Conversations per Week", width=25)
+        console.print(chart)
+
+        console.print()
+        msgs_data = [
+            (r.label.split(" (")[0], r.total)
+            for r in reversed_results
+        ]
+        chart = render_bar_chart(msgs_data, title="Messages per Week", width=25)
+        console.print(chart)
 
         # Distribution breakdown
         console.print()
