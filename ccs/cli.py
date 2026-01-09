@@ -9,6 +9,7 @@ from rich.panel import Panel
 
 from .database import CursorDatabase, get_cursor_db_path
 from .formatters import RichFormatter, MarkdownFormatter
+from .stats import ConversationStats
 
 
 console = Console()
@@ -465,6 +466,206 @@ def info():
 
         except Exception as e:
             console.print(f"[red]Error reading database: {e}[/red]")
+
+
+@main.command()
+@click.option('--all', 'show_all', is_flag=True, help='Include archived conversations')
+@click.option('--since', help='Stats for conversations since this time. Relative: "3d", "4w". Absolute: "2024-01-01"')
+@click.option('--before', help='Stats for conversations before this time (same format as --since)')
+@click.option('--by-week', is_flag=True, help='Show stats broken down by week')
+@click.option('--weeks', type=int, default=4, help='Number of weeks to show (with --by-week)')
+@click.option('--format', 'output_format', type=click.Choice(['rich', 'markdown']), default='rich')
+def stats(show_all: bool, since: str, before: str, by_week: bool, weeks: int, output_format: str):
+    """Show conversation statistics.
+
+    By default shows overall statistics. Use --by-week to see weekly breakdown.
+
+    \b
+    Examples:
+      ccs stats                    # Overall stats (all time)
+      ccs stats --since 4w         # Stats for last 4 weeks
+      ccs stats --by-week          # Weekly breakdown (last 4 weeks)
+      ccs stats --by-week --weeks 8  # Weekly breakdown (last 8 weeks)
+    """
+    try:
+        db = CursorDatabase()
+        conversations = db.list_conversations(since=since, before=before, include_empty=False)
+
+        if not show_all:
+            conversations = [c for c in conversations if not c['is_archived']]
+
+        if not conversations:
+            console.print("[yellow]No conversations found.[/yellow]")
+            return
+
+        stats_calc = ConversationStats(conversations)
+
+        if by_week:
+            _output_weekly_stats(stats_calc, weeks, output_format)
+        else:
+            _output_overall_stats(stats_calc, output_format)
+
+    except FileNotFoundError as e:
+        console.print(f"[red]Error: {e}[/red]")
+        raise click.Abort()
+
+
+def _output_overall_stats(stats_calc: ConversationStats, output_format: str):
+    """Output overall statistics."""
+    from rich.table import Table
+
+    result = stats_calc.compute(metric="message_count", label="Overall")
+    top_convs = stats_calc.top_conversations(n=5)
+
+    if output_format == 'rich':
+        # Summary panel
+        date_range = ""
+        if result.start_date and result.end_date:
+            date_range = f"\n[dim]Date range: {result.start_date.strftime('%Y-%m-%d')} to {result.end_date.strftime('%Y-%m-%d')}[/dim]"
+
+        console.print(Panel.fit(
+            f"[bold]Conversations:[/bold] {result.count}\n"
+            f"[bold]Total Messages:[/bold] {result.total}\n"
+            f"[bold]Mean:[/bold] {result.mean:.1f}\n"
+            f"[bold]Median:[/bold] {result.median:.1f}\n"
+            f"[bold]Std Dev:[/bold] {result.stdev:.1f}\n"
+            f"[bold]Range:[/bold] {result.min} - {result.max}\n"
+            f"[bold]P25 / P75 / P90:[/bold] {result.p25} / {result.p75} / {result.p90}"
+            f"{date_range}",
+            title="[bold cyan]Conversation Statistics[/bold cyan]"
+        ))
+
+        # Distribution table
+        console.print()
+        dist_table = Table(title="Distribution by Message Count")
+        dist_table.add_column("Bucket", style="cyan")
+        dist_table.add_column("Count", justify="right")
+        dist_table.add_column("Percent", justify="right")
+
+        for bucket, count in result.distribution.items():
+            pct = (count / result.count * 100) if result.count else 0
+            dist_table.add_row(bucket, str(count), f"{pct:.0f}%")
+
+        console.print(dist_table)
+
+        # Top conversations
+        if top_convs:
+            console.print()
+            top_table = Table(title="Largest Conversations")
+            top_table.add_column("Date", style="dim")
+            top_table.add_column("Messages", justify="right", style="cyan")
+            top_table.add_column("Title")
+
+            for conv in top_convs:
+                date_str = conv['created'].strftime('%Y-%m-%d') if conv.get('created') else 'N/A'
+                title = conv['title'][:50] + '...' if len(conv['title']) > 50 else conv['title']
+                top_table.add_row(date_str, str(conv['message_count']), title)
+
+            console.print(top_table)
+
+    else:  # markdown
+        lines = ["# Conversation Statistics\n"]
+
+        if result.start_date and result.end_date:
+            lines.append(f"_Date range: {result.start_date.strftime('%Y-%m-%d')} to {result.end_date.strftime('%Y-%m-%d')}_\n")
+
+        lines.append("## Summary\n")
+        lines.append(f"- **Conversations:** {result.count}")
+        lines.append(f"- **Total Messages:** {result.total}")
+        lines.append(f"- **Mean:** {result.mean:.1f}")
+        lines.append(f"- **Median:** {result.median:.1f}")
+        lines.append(f"- **Std Dev:** {result.stdev:.1f}")
+        lines.append(f"- **Range:** {result.min} - {result.max}")
+        lines.append(f"- **P25 / P75 / P90:** {result.p25} / {result.p75} / {result.p90}")
+
+        lines.append("\n## Distribution\n")
+        lines.append("| Bucket | Count | Percent |")
+        lines.append("|--------|------:|--------:|")
+        for bucket, count in result.distribution.items():
+            pct = (count / result.count * 100) if result.count else 0
+            lines.append(f"| {bucket} | {count} | {pct:.0f}% |")
+
+        if top_convs:
+            lines.append("\n## Largest Conversations\n")
+            lines.append("| Date | Messages | Title |")
+            lines.append("|------|----------|-------|")
+            for conv in top_convs:
+                date_str = conv['created'].strftime('%Y-%m-%d') if conv.get('created') else 'N/A'
+                title = conv['title'][:50] + '...' if len(conv['title']) > 50 else conv['title']
+                lines.append(f"| {date_str} | {conv['message_count']} | {title} |")
+
+        print('\n'.join(lines))
+
+
+def _output_weekly_stats(stats_calc: ConversationStats, num_weeks: int, output_format: str):
+    """Output weekly statistics breakdown."""
+    from rich.table import Table
+
+    results = stats_calc.by_period(period="week", num_periods=num_weeks)
+
+    if output_format == 'rich':
+        table = Table(title=f"Weekly Statistics (last {num_weeks} weeks)")
+        table.add_column("Week", style="cyan")
+        table.add_column("Convs", justify="right")
+        table.add_column("Total", justify="right")
+        table.add_column("Mean", justify="right")
+        table.add_column("Median", justify="right")
+        table.add_column("P90", justify="right")
+        table.add_column("Max", justify="right")
+
+        for r in results:
+            table.add_row(
+                r.label,
+                str(r.count),
+                str(r.total),
+                f"{r.mean:.1f}" if r.count else "-",
+                f"{r.median:.1f}" if r.count else "-",
+                str(r.p90) if r.count else "-",
+                str(r.max) if r.count else "-",
+            )
+
+        console.print(table)
+
+        # Distribution breakdown
+        console.print()
+        dist_table = Table(title="Distribution by Week")
+        dist_table.add_column("Week", style="cyan")
+        for bucket in ConversationStats.DEFAULT_BUCKETS:
+            dist_table.add_column(bucket[0], justify="right")
+
+        for r in results:
+            row = [r.label.split(" (")[0]]  # Just the label without date range
+            for bucket_name, _, _ in ConversationStats.DEFAULT_BUCKETS:
+                row.append(str(r.distribution.get(bucket_name, 0)))
+            dist_table.add_row(*row)
+
+        console.print(dist_table)
+
+    else:  # markdown
+        lines = [f"# Weekly Statistics (last {num_weeks} weeks)\n"]
+
+        lines.append("## Summary\n")
+        lines.append("| Week | Convs | Total | Mean | Median | P90 | Max |")
+        lines.append("|------|------:|------:|-----:|-------:|----:|----:|")
+
+        for r in results:
+            mean_str = f"{r.mean:.1f}" if r.count else "-"
+            median_str = f"{r.median:.1f}" if r.count else "-"
+            p90_str = str(r.p90) if r.count else "-"
+            max_str = str(r.max) if r.count else "-"
+            lines.append(f"| {r.label} | {r.count} | {r.total} | {mean_str} | {median_str} | {p90_str} | {max_str} |")
+
+        lines.append("\n## Distribution\n")
+        bucket_headers = " | ".join(b[0] for b in ConversationStats.DEFAULT_BUCKETS)
+        lines.append(f"| Week | {bucket_headers} |")
+        lines.append("|------|" + "|".join(["-----:" for _ in ConversationStats.DEFAULT_BUCKETS]) + "|")
+
+        for r in results:
+            label = r.label.split(" (")[0]
+            counts = " | ".join(str(r.distribution.get(b[0], 0)) for b in ConversationStats.DEFAULT_BUCKETS)
+            lines.append(f"| {label} | {counts} |")
+
+        print('\n'.join(lines))
 
 
 if __name__ == '__main__':

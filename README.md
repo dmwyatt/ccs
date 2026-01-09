@@ -34,6 +34,11 @@ ccs export "home directory" --format markdown --output chat.md
 
 # Search conversations (titles and message content)
 ccs search "python" --since "1w"
+
+# Show conversation statistics
+ccs stats                      # Overall stats (all time)
+ccs stats --since 4w           # Stats for last 4 weeks
+ccs stats --by-week            # Weekly breakdown
 ```
 
 Time filters (`--since`, `--before`) work on all commands. See DateTime Filtering below for syntax.
@@ -66,7 +71,8 @@ The CLI is **title-focused** for better usability:
 - **Show** - Display conversations by title or ID
 - **Export** - Export conversations by title or ID to markdown, JSON, or text
 - **Search** - Search conversations by keywords or exact phrases (AND logic)
-- **Info** - Display statistics about stored conversations
+- **Stats** - Conversation statistics with weekly breakdown, distribution, and outliers
+- **Info** - Display basic storage information
 
 ### Title-Based Access
 
@@ -134,7 +140,6 @@ Potential improvements:
 4. Add filtering options (by date, status, model)
 5. Add conversation deletion/archiving capabilities
 6. Support multiple Cursor profiles
-7. Add conversation statistics and analytics
 
 ## Development
 

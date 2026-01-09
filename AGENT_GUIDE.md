@@ -130,6 +130,30 @@ Try widening the time window, different keywords, or using `search` instead of `
 **Disambiguation:**
 When the tool shows multiple matches, present the options clearly to the user and help them identify which one they want.
 
+## Statistics
+
+Use `ccs stats` to analyze conversation patterns:
+
+```bash
+# Overall statistics
+ccs stats --format markdown
+
+# Stats for a specific time period
+ccs stats --since 4w --format markdown
+
+# Weekly breakdown
+ccs stats --by-week --format markdown
+
+# More weeks
+ccs stats --by-week --weeks 8 --format markdown
+```
+
+Stats output includes:
+- Count, mean, median, P25/P75/P90, range
+- Distribution buckets (1-5, 6-15, 16-30, 31-50, 51-100, 100+ messages)
+- Top 5 largest conversations (overall mode only)
+- Weekly breakdown with distribution (--by-week mode)
+
 ## Key Principles
 
 - **Be proactive:** Offer to search when user mentions past work
